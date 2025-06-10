@@ -157,23 +157,32 @@ const ReportsManagement: React.FC = () => {
     if (error) throw error;
 
     // จัดกลุ่มข้อมูลตามสินค้า
-    const groupedData = data?.reduce((acc: any, item) => {
-      const productKey = `${item.product.code}-${item.product.name}`;
-      if (!acc[productKey]) {
-        acc[productKey] = {
-          product_name: item.product.name,
-          product_code: item.product.code,
-          total_quantity: 0,
-          total_amount: 0
-        };
+    interface ProductGroup {
+      product_name: string;
+      product_code: string;
+      total_quantity: number;
+      total_amount: number;
+    }
+
+    const groupedData = data?.reduce((acc: Record<string, ProductGroup>, item: any) => {
+      if (item.product) {
+        const productKey = `${item.product.code}-${item.product.name}`;
+        if (!acc[productKey]) {
+          acc[productKey] = {
+            product_name: item.product.name,
+            product_code: item.product.code,
+            total_quantity: 0,
+            total_amount: 0
+          };
+        }
+        acc[productKey].total_quantity += item.quantity;
+        acc[productKey].total_amount += item.total_price;
       }
-      acc[productKey].total_quantity += item.quantity;
-      acc[productKey].total_amount += item.total_price;
       return acc;
-    }, {});
+    }, {} as Record<string, ProductGroup>);
 
     const reportData: ProductReport[] = Object.values(groupedData || {})
-      .sort((a: any, b: any) => b.total_amount - a.total_amount);
+      .sort((a, b) => b.total_amount - a.total_amount);
 
     setProductReport(reportData);
   };
@@ -194,25 +203,34 @@ const ReportsManagement: React.FC = () => {
     if (error) throw error;
 
     // จัดกลุ่มข้อมูลตามลูกค้า
-    const groupedData = data?.reduce((acc: any, sale) => {
-      const customerKey = sale.customer.phone;
-      if (!acc[customerKey]) {
-        acc[customerKey] = {
-          customer_name: sale.customer.name,
-          customer_phone: sale.customer.phone,
-          total_purchases: 0,
-          last_purchase: sale.sale_date
-        };
-      }
-      acc[customerKey].total_purchases += sale.total_amount;
-      if (new Date(sale.sale_date) > new Date(acc[customerKey].last_purchase)) {
-        acc[customerKey].last_purchase = sale.sale_date;
+    interface CustomerGroup {
+      customer_name: string;
+      customer_phone: string;
+      total_purchases: number;
+      last_purchase: string;
+    }
+
+    const groupedData = data?.reduce((acc: Record<string, CustomerGroup>, sale: any) => {
+      if (sale.customer) {
+        const customerKey = sale.customer.phone;
+        if (!acc[customerKey]) {
+          acc[customerKey] = {
+            customer_name: sale.customer.name,
+            customer_phone: sale.customer.phone,
+            total_purchases: 0,
+            last_purchase: sale.sale_date
+          };
+        }
+        acc[customerKey].total_purchases += sale.total_amount;
+        if (new Date(sale.sale_date) > new Date(acc[customerKey].last_purchase)) {
+          acc[customerKey].last_purchase = sale.sale_date;
+        }
       }
       return acc;
-    }, {});
+    }, {} as Record<string, CustomerGroup>);
 
     const reportData: CustomerReport[] = Object.values(groupedData || {})
-      .sort((a: any, b: any) => b.total_purchases - a.total_purchases);
+      .sort((a, b) => b.total_purchases - a.total_purchases);
 
     setCustomerReport(reportData);
   };
