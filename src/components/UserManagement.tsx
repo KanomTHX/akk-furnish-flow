@@ -1,253 +1,314 @@
 
-import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Users, Plus, Edit, Trash2, Search } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Plus, Edit2, Trash2, Search } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  status: 'active' | 'inactive';
-  lastLogin: string;
-}
-
-const mockUsers: User[] = [
-  { id: '1', name: 'นาย วิชาย แอดมิน', email: 'admin@akk.com', role: 'admin', status: 'active', lastLogin: '2024-06-10 14:30' },
-  { id: '2', name: 'นาง สุดา ขายดี', email: 'sales@akk.com', role: 'sales', status: 'active', lastLogin: '2024-06-10 13:45' },
-  { id: '3', name: 'นาย สมชาย เก็บเงิน', email: 'cashier@akk.com', role: 'cashier', status: 'active', lastLogin: '2024-06-10 12:20' },
-  { id: '4', name: 'นาง มานะ คลังสินค้า', email: 'warehouse@akk.com', role: 'warehouse', status: 'active', lastLogin: '2024-06-10 11:15' },
-];
-
-const roleLabels = {
-  admin: 'แอดมิน',
-  sales: 'พนักงานขาย',
-  cashier: 'พนักงานเก็บเงิน',
-  credit: 'พนักงานสินเชื่อ',
-  warehouse: 'ฝ่ายคลังสินค้า',
-  manager: 'หัวหน้า/ผู้บริหาร'
-};
-
-const UserManagement: React.FC = () => {
-  const [users, setUsers] = useState<User[]>(mockUsers);
+const UserManagement = () => {
+  const { userProfile } = useAuth();
+  const { toast } = useToast();
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [newUser, setNewUser] = useState({
-    name: '',
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [formData, setFormData] = useState({
+    full_name: '',
     email: '',
-    role: '',
-    password: ''
+    role: 'sales',
+    phone: ''
   });
 
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const loadUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setUsers(data || []);
+    } catch (error) {
+      console.error('Error loading users:', error);
+      toast({
+        variant: "destructive",
+        title: "เกิดข้อผิดพลาด",
+        description: "ไม่สามารถโหลดข้อมูลผู้ใช้งานได้",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    try {
+      if (editingUser) {
+        // Update user
+        const { error } = await supabase
+          .from('profiles')
+          .update(formData)
+          .eq('id', editingUser.id);
+
+        if (error) throw error;
+
+        toast({
+          title: "อัปเดตสำเร็จ",
+          description: "ข้อมูลผู้ใช้งานถูกอัปเดตแล้ว",
+        });
+      }
+
+      setIsDialogOpen(false);
+      setEditingUser(null);
+      setFormData({ full_name: '', email: '', role: 'sales', phone: '' });
+      loadUsers();
+    } catch (error) {
+      console.error('Error saving user:', error);
+      toast({
+        variant: "destructive",
+        title: "เกิดข้อผิดพลาด",
+        description: "ไม่สามารถบันทึกข้อมูลได้",
+      });
+    }
+  };
+
+  const handleEdit = (user) => {
+    setEditingUser(user);
+    setFormData({
+      full_name: user.full_name,
+      email: user.email,
+      role: user.role,
+      phone: user.phone || ''
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleDelete = async (userId) => {
+    if (!confirm('คุณแน่ใจหรือไม่ที่จะลบผู้ใช้งานนี้?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      toast({
+        title: "ลบสำเร็จ",
+        description: "ผู้ใช้งานถูกลบแล้ว",
+      });
+      loadUsers();
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      toast({
+        variant: "destructive",
+        title: "เกิดข้อผิดพลาด",
+        description: "ไม่สามารถลบผู้ใช้งานได้",
+      });
+    }
+  };
+
   const filteredUsers = users.filter(user =>
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleAddUser = () => {
-    if (newUser.name && newUser.email && newUser.role) {
-      const user: User = {
-        id: (users.length + 1).toString(),
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role,
-        status: 'active',
-        lastLogin: 'ยังไม่เคยเข้าใช้งาน'
-      };
-      setUsers([...users, user]);
-      setNewUser({ name: '', email: '', role: '', password: '' });
-      setIsAddDialogOpen(false);
-    }
+  const getRoleBadge = (role) => {
+    const roleNames = {
+      admin: { label: 'แอดมิน', variant: 'destructive' },
+      sales: { label: 'พนักงานขาย', variant: 'default' },
+      cashier: { label: 'พนักงานเก็บเงิน', variant: 'secondary' },
+      credit: { label: 'ฝ่ายสินเชื่อ', variant: 'outline' },
+      warehouse: { label: 'ฝ่ายคลังสินค้า', variant: 'secondary' },
+      manager: { label: 'ผู้บริหาร', variant: 'default' }
+    };
+    
+    const roleInfo = roleNames[role] || { label: role, variant: 'default' };
+    return <Badge variant={roleInfo.variant}>{roleInfo.label}</Badge>;
   };
 
-  const getRoleBadgeColor = (role: string) => {
-    switch (role) {
-      case 'admin': return 'bg-red-100 text-red-800';
-      case 'sales': return 'bg-blue-100 text-blue-800';
-      case 'cashier': return 'bg-green-100 text-green-800';
-      case 'credit': return 'bg-purple-100 text-purple-800';
-      case 'warehouse': return 'bg-orange-100 text-orange-800';
-      case 'manager': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
+  if (userProfile?.role !== 'admin') {
+    return (
+      <div className="text-center py-12">
+        <h3 className="text-lg font-medium text-slate-900 mb-2">ไม่มีสิทธิ์เข้าถึง</h3>
+        <p className="text-slate-600">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <Users className="h-6 w-6 text-furniture-500" />
-          <h2 className="text-2xl font-bold text-slate-900">จัดการผู้ใช้งาน</h2>
-        </div>
-        
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-furniture-500 hover:bg-furniture-600">
-              <Plus className="h-4 w-4 mr-2" />
-              เพิ่มผู้ใช้ใหม่
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>เพิ่มผู้ใช้งานใหม่</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="name">ชื่อ-นามสกุล</Label>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>จัดการผู้ใช้งาน</CardTitle>
+              <CardDescription>
+                จัดการบัญชีผู้ใช้งานและสิทธิการเข้าถึงในระบบ
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center space-x-4 mb-6">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <Input
+                placeholder="ค้นหาผู้ใช้งาน..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </div>
+
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ชื่อ-นามสกุล</TableHead>
+                  <TableHead>อีเมล</TableHead>
+                  <TableHead>บทบาท</TableHead>
+                  <TableHead>เบอร์โทร</TableHead>
+                  <TableHead>วันที่สร้าง</TableHead>
+                  <TableHead className="text-right">จัดการ</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-6">
+                      กำลังโหลด...
+                    </TableCell>
+                  </TableRow>
+                ) : filteredUsers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
+                      ไม่พบข้อมูลผู้ใช้งาน
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredUsers.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell className="font-medium">{user.full_name}</TableCell>
+                      <TableCell>{user.email}</TableCell>
+                      <TableCell>{getRoleBadge(user.role)}</TableCell>
+                      <TableCell>{user.phone || '-'}</TableCell>
+                      <TableCell>
+                        {new Date(user.created_at).toLocaleDateString('th-TH')}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end space-x-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEdit(user)}
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(user.id)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Edit User Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>แก้ไขข้อมูลผู้ใช้งาน</DialogTitle>
+            <DialogDescription>
+              แก้ไขข้อมูลและสิทธิการเข้าถึงของผู้ใช้งาน
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit}>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">ชื่อ-นามสกุล</label>
                 <Input
-                  id="name"
-                  value={newUser.name}
-                  onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                  value={formData.full_name}
+                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                   placeholder="กรอกชื่อ-นามสกุล"
+                  required
                 />
               </div>
-              <div>
-                <Label htmlFor="email">อีเมล</Label>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">อีเมล</label>
                 <Input
-                  id="email"
                   type="email"
-                  value={newUser.email}
-                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   placeholder="กรอกอีเมล"
+                  required
+                  disabled={!!editingUser}
                 />
               </div>
-              <div>
-                <Label htmlFor="role">บทบาท</Label>
-                <Select value={newUser.role} onValueChange={(value) => setNewUser({ ...newUser, role: value })}>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">บทบาท</label>
+                <Select
+                  value={formData.role}
+                  onValueChange={(value) => setFormData({ ...formData, role: value })}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="เลือกบทบาท" />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(roleLabels).map(([key, label]) => (
-                      <SelectItem key={key} value={key}>{label}</SelectItem>
-                    ))}
+                    <SelectItem value="admin">แอดมิน</SelectItem>
+                    <SelectItem value="sales">พนักงานขาย</SelectItem>
+                    <SelectItem value="cashier">พนักงานเก็บเงิน</SelectItem>
+                    <SelectItem value="credit">ฝ่ายสินเชื่อ</SelectItem>
+                    <SelectItem value="warehouse">ฝ่ายคลังสินค้า</SelectItem>
+                    <SelectItem value="manager">ผู้บริหาร</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label htmlFor="password">รหัสผ่าน</Label>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">เบอร์โทร</label>
                 <Input
-                  id="password"
-                  type="password"
-                  value={newUser.password}
-                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                  placeholder="กรอกรหัสผ่าน"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="กรอกเบอร์โทร"
                 />
               </div>
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                  ยกเลิก
-                </Button>
-                <Button onClick={handleAddUser} className="bg-furniture-500 hover:bg-furniture-600">
-                  เพิ่มผู้ใช้
-                </Button>
-              </div>
             </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Search */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
-            <Input
-              placeholder="ค้นหาผู้ใช้งาน..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Users List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>รายชื่อผู้ใช้งาน ({filteredUsers.length} คน)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {filteredUsers.map((user) => (
-              <div key={user.id} className="flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
-                <div className="flex items-center space-x-4">
-                  <div className="w-10 h-10 bg-furniture-100 rounded-full flex items-center justify-center">
-                    <Users className="h-5 w-5 text-furniture-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-medium text-slate-900">{user.name}</h3>
-                    <p className="text-sm text-slate-600">{user.email}</p>
-                    <p className="text-xs text-slate-500">เข้าใช้งานล่าสุด: {user.lastLogin}</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center space-x-3">
-                  <Badge className={getRoleBadgeColor(user.role)}>
-                    {roleLabels[user.role as keyof typeof roleLabels]}
-                  </Badge>
-                  <Badge variant={user.status === 'active' ? 'default' : 'secondary'}>
-                    {user.status === 'active' ? 'ใช้งานได้' : 'ระงับการใช้งาน'}
-                  </Badge>
-                  <div className="flex space-x-2">
-                    <Button variant="outline" size="sm">
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* User Permissions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>สิทธิ์การเข้าถึงตามบทบาท</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-3">
-              <div className="p-3 border border-slate-200 rounded-lg">
-                <h4 className="font-medium text-slate-900 mb-2">แอดมิน</h4>
-                <p className="text-sm text-slate-600">เข้าถึงทุกระบบ และจัดการผู้ใช้งาน</p>
-              </div>
-              <div className="p-3 border border-slate-200 rounded-lg">
-                <h4 className="font-medium text-slate-900 mb-2">พนักงานขาย</h4>
-                <p className="text-sm text-slate-600">ขายสด, เช่าซื้อ, จัดการลูกค้า</p>
-              </div>
-              <div className="p-3 border border-slate-200 rounded-lg">
-                <h4 className="font-medium text-slate-900 mb-2">พนักงานเก็บเงิน</h4>
-                <p className="text-sm text-slate-600">รับชำระเงิน, บัญชี, ใบเสร็จ</p>
-              </div>
-            </div>
-            <div className="space-y-3">
-              <div className="p-3 border border-slate-200 rounded-lg">
-                <h4 className="font-medium text-slate-900 mb-2">พนักงานสินเชื่อ</h4>
-                <p className="text-sm text-slate-600">จัดการสัญญาเช่าซื้อ, ติดตามผ่อน</p>
-              </div>
-              <div className="p-3 border border-slate-200 rounded-lg">
-                <h4 className="font-medium text-slate-900 mb-2">ฝ่ายคลังสินค้า</h4>
-                <p className="text-sm text-slate-600">จัดการสต็อกสินค้า, นำเข้า-ส่งออก</p>
-              </div>
-              <div className="p-3 border border-slate-200 rounded-lg">
-                <h4 className="font-medium text-slate-900 mb-2">หัวหน้า/ผู้บริหาร</h4>
-                <p className="text-sm text-slate-600">ดูรายงาน, วิเคราะห์ข้อมูล</p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                ยกเลิก
+              </Button>
+              <Button type="submit">
+                บันทึก
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
