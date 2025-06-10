@@ -4,6 +4,11 @@ import Layout from '@/components/Layout';
 import Dashboard from '@/components/Dashboard';
 import UserManagement from '@/components/UserManagement';
 import CustomerManagement from '@/components/CustomerManagement';
+import CashSaleManagement from '@/components/CashSaleManagement';
+import HirePurchaseManagement from '@/components/HirePurchaseManagement';
+import InventoryManagement from '@/components/InventoryManagement';
+import AccountingManagement from '@/components/AccountingManagement';
+import ReportsManagement from '@/components/ReportsManagement';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -17,40 +22,15 @@ const Index = () => {
       case 'customers':
         return <CustomerManagement />;
       case 'sales':
-        return (
-          <div className="text-center py-12">
-            <h3 className="text-lg font-medium text-slate-900 mb-2">ระบบขายสด</h3>
-            <p className="text-slate-600">กำลังพัฒนา...</p>
-          </div>
-        );
+        return <CashSaleManagement />;
       case 'hire-purchase':
-        return (
-          <div className="text-center py-12">
-            <h3 className="text-lg font-medium text-slate-900 mb-2">ระบบเช่าซื้อ</h3>
-            <p className="text-slate-600">กำลังพัฒนา...</p>
-          </div>
-        );
+        return <HirePurchaseManagement />;
       case 'inventory':
-        return (
-          <div className="text-center py-12">
-            <h3 className="text-lg font-medium text-slate-900 mb-2">ระบบคลังสินค้า</h3>
-            <p className="text-slate-600">กำลังพัฒนา...</p>
-          </div>
-        );
+        return <InventoryManagement />;
       case 'accounting':
-        return (
-          <div className="text-center py-12">
-            <h3 className="text-lg font-medium text-slate-900 mb-2">ระบบบัญชี</h3>
-            <p className="text-slate-600">กำลังพัฒนา...</p>
-          </div>
-        );
+        return <AccountingManagement />;
       case 'reports':
-        return (
-          <div className="text-center py-12">
-            <h3 className="text-lg font-medium text-slate-900 mb-2">ระบบรายงาน</h3>
-            <p className="text-slate-600">กำลังพัฒนา...</p>
-          </div>
-        );
+        return <ReportsManagement />;
       default:
         return <Dashboard />;
     }

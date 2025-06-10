@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,77 +8,30 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Users, Plus, Search, Edit, Bell, CreditCard } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import CustomerEditModal from './CustomerEditModal';
 
 interface Customer {
   id: string;
   name: string;
   phone: string;
-  email: string;
-  address: string;
-  type: 'regular' | 'hire-purchase' | 'vip' | 'overdue';
-  totalPurchases: number;
-  lastPurchase: string;
-  hirePurchaseStatus?: {
-    contractId: string;
-    totalAmount: number;
-    remainingAmount: number;
-    nextPaymentDate: string;
-    installmentAmount: number;
-  };
+  email?: string;
+  address?: string;
+  customer_type: string;
+  total_purchases?: number;
+  last_purchase_date?: string;
+  created_at: string;
 }
 
-const mockCustomers: Customer[] = [
-  {
-    id: '1',
-    name: 'นาย สมชาย ใจดี',
-    phone: '081-234-5678',
-    email: 'somchai@email.com',
-    address: '123 ถ.รามคำแหง เขตบางกะปิ กรุงเทพฯ 10240',
-    type: 'vip',
-    totalPurchases: 125000,
-    lastPurchase: '2024-06-08'
-  },
-  {
-    id: '2',
-    name: 'นาง สุดา เก่งงาน',
-    phone: '082-345-6789',
-    email: 'suda@email.com',
-    address: '456 ถ.ลาดพร้าว เขตวังทองหลาง กรุงเทพฯ 10310',
-    type: 'hire-purchase',
-    totalPurchases: 45000,
-    lastPurchase: '2024-05-15',
-    hirePurchaseStatus: {
-      contractId: 'HP-2024-001',
-      totalAmount: 45000,
-      remainingAmount: 30000,
-      nextPaymentDate: '2024-06-15',
-      installmentAmount: 3750
-    }
-  },
-  {
-    id: '3',
-    name: 'นาย วิชาย รวยดี',
-    phone: '083-456-7890',
-    email: 'wichai@email.com',
-    address: '789 ถ.สุขุมวิท เขตวัฒนา กรุงเทพฯ 10110',
-    type: 'overdue',
-    totalPurchases: 28000,
-    lastPurchase: '2024-04-20',
-    hirePurchaseStatus: {
-      contractId: 'HP-2024-002',
-      totalAmount: 28000,
-      remainingAmount: 18000,
-      nextPaymentDate: '2024-05-20',
-      installmentAmount: 2800
-    }
-  }
-];
-
 const CustomerManagement: React.FC = () => {
-  const [customers, setCustomers] = useState<Customer[]>(mockCustomers);
+  const { toast } = useToast();
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [newCustomer, setNewCustomer] = useState({
     name: '',
     phone: '',
@@ -86,30 +39,78 @@ const CustomerManagement: React.FC = () => {
     address: ''
   });
 
+  useEffect(() => {
+    loadCustomers();
+  }, []);
+
+  const loadCustomers = async () => {
+    const { data, error } = await supabase
+      .from('customers')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      toast({
+        title: "ข้อผิดพลาด",
+        description: "ไม่สามารถโหลดข้อมูลลูกค้าได้",
+        variant: "destructive"
+      });
+      return;
+    }
+    setCustomers(data || []);
+  };
+
   const filteredCustomers = customers.filter(customer => {
     const matchesSearch = customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          customer.phone.includes(searchTerm) ||
-                         customer.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterType === 'all' || customer.type === filterType;
+                         (customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
+    const matchesFilter = filterType === 'all' || customer.customer_type === filterType;
     return matchesSearch && matchesFilter;
   });
 
-  const handleAddCustomer = () => {
-    if (newCustomer.name && newCustomer.phone) {
-      const customer: Customer = {
-        id: (customers.length + 1).toString(),
-        name: newCustomer.name,
-        phone: newCustomer.phone,
-        email: newCustomer.email,
-        address: newCustomer.address,
-        type: 'regular',
-        totalPurchases: 0,
-        lastPurchase: 'ยังไม่เคยซื้อ'
-      };
-      setCustomers([...customers, customer]);
+  const handleAddCustomer = async () => {
+    if (!newCustomer.name || !newCustomer.phone) {
+      toast({
+        title: "ข้อผิดพลาด",
+        description: "กรุณากรอกชื่อและเบอร์โทรศัพท์",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .insert({
+          name: newCustomer.name,
+          phone: newCustomer.phone,
+          email: newCustomer.email || null,
+          address: newCustomer.address || null,
+          customer_type: 'regular'
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "สำเร็จ",
+        description: "เพิ่มลูกค้าเรียบร้อย"
+      });
+      
       setNewCustomer({ name: '', phone: '', email: '', address: '' });
       setIsAddDialogOpen(false);
+      loadCustomers();
+    } catch (error: any) {
+      toast({
+        title: "ข้อผิดพลาด",
+        description: error.message || "ไม่สามารถเพิ่มลูกค้าได้",
+        variant: "destructive"
+      });
     }
+  };
+
+  const handleEditCustomer = (customer: Customer) => {
+    setEditingCustomer(customer);
+    setIsEditModalOpen(true);
   };
 
   const getCustomerTypeBadge = (type: string) => {
@@ -251,7 +252,7 @@ const CustomerManagement: React.FC = () => {
           <CardContent className="pt-6">
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-600">
-                {customers.filter(c => c.type === 'hire-purchase').length}
+                {customers.filter(c => c.customer_type === 'hire-purchase').length}
               </div>
               <div className="text-sm text-slate-600">ลูกค้าเช่าซื้อ</div>
             </div>
@@ -261,7 +262,7 @@ const CustomerManagement: React.FC = () => {
           <CardContent className="pt-6">
             <div className="text-center">
               <div className="text-2xl font-bold text-red-600">
-                {customers.filter(c => c.type === 'overdue').length}
+                {customers.filter(c => c.customer_type === 'overdue').length}
               </div>
               <div className="text-sm text-slate-600">ค้างชำระ</div>
             </div>
@@ -271,7 +272,7 @@ const CustomerManagement: React.FC = () => {
           <CardContent className="pt-6">
             <div className="text-center">
               <div className="text-2xl font-bold text-yellow-600">
-                {customers.filter(c => c.type === 'vip').length}
+                {customers.filter(c => c.customer_type === 'vip').length}
               </div>
               <div className="text-sm text-slate-600">ลูกค้า VIP</div>
             </div>
@@ -292,7 +293,7 @@ const CustomerManagement: React.FC = () => {
                   <div className="flex-1">
                     <div className="flex items-center space-x-3 mb-2">
                       <h3 className="font-medium text-slate-900">{customer.name}</h3>
-                      {getCustomerTypeBadge(customer.type)}
+                      {getCustomerTypeBadge(customer.customer_type)}
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-600">
                       <div>
@@ -301,27 +302,23 @@ const CustomerManagement: React.FC = () => {
                         <p>📍 {customer.address || 'ไม่ระบุ'}</p>
                       </div>
                       <div>
-                        <p>💰 ยอดซื้อรวม: ฿{customer.totalPurchases.toLocaleString()}</p>
-                        <p>📅 ซื้อล่าสุด: {customer.lastPurchase}</p>
-                        {customer.hirePurchaseStatus && (
-                          <div className="mt-2 p-2 bg-blue-50 rounded border-l-4 border-blue-500">
-                            <p className="font-medium text-blue-800">สถานะเช่าซื้อ:</p>
-                            <p className="text-blue-700">สัญญา: {customer.hirePurchaseStatus.contractId}</p>
-                            <p className="text-blue-700">คงเหลือ: ฿{customer.hirePurchaseStatus.remainingAmount.toLocaleString()}</p>
-                            <p className="text-blue-700">งวดต่อไป: {customer.hirePurchaseStatus.nextPaymentDate}</p>
-                            <p className="text-blue-700">จำนวนงวดละ: ฿{customer.hirePurchaseStatus.installmentAmount.toLocaleString()}</p>
-                          </div>
-                        )}
+                        <p>💰 ยอดซื้อรวม: ฿{(customer.total_purchases || 0).toLocaleString()}</p>
+                        <p>📅 ซื้อล่าสุด: {customer.last_purchase_date ? new Date(customer.last_purchase_date).toLocaleDateString('th-TH') : 'ยังไม่เคยซื้อ'}</p>
+                        <p>📝 เพิ่มเมื่อ: {new Date(customer.created_at).toLocaleDateString('th-TH')}</p>
                       </div>
                     </div>
                   </div>
                   
                   <div className="flex flex-col space-y-2">
-                    <Button variant="outline" size="sm">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleEditCustomer(customer)}
+                    >
                       <Edit className="h-4 w-4 mr-1" />
                       แก้ไข
                     </Button>
-                    {customer.hirePurchaseStatus && (
+                    {customer.customer_type === 'hire-purchase' && (
                       <>
                         <Button variant="outline" size="sm" className="text-green-600">
                           <CreditCard className="h-4 w-4 mr-1" />
@@ -340,6 +337,16 @@ const CustomerManagement: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      <CustomerEditModal
+        customer={editingCustomer}
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingCustomer(null);
+        }}
+        onUpdate={loadCustomers}
+      />
     </div>
   );
 };
