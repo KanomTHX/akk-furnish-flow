@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Calendar, DollarSign, TrendingUp, TrendingDown } from 'lucide-react';
+import { FileText, Calendar, DollarSign, TrendingUp, TrendingDown, MinusCircle } from 'lucide-react'; // เพิ่ม MinusCircle สำหรับค่าใช้จ่าย
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -21,7 +20,7 @@ interface Transaction {
 
 interface Summary {
   totalIncome: number;
-  totalExpense: number;
+  totalExpense: number; // เพิ่ม totalExpense
   netProfit: number;
   salesCount: number;
   hirePurchaseIncome: number;
@@ -52,11 +51,13 @@ const AccountingManagement: React.FC = () => {
     switch (selectedPeriod) {
       case 'today':
         startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1); // สำหรับวันนี้ วันสิ้นสุดควรเป็นตอนต้นของวันถัดไป
         break;
       case 'thisWeek':
         const weekStart = now.getDate() - now.getDay();
         startDate = new Date(now.getFullYear(), now.getMonth(), weekStart);
+        // สิ้นสุดสัปดาห์จะเป็นวันอาทิตย์ถัดไป
+        endDate = new Date(now.getFullYear(), now.getMonth(), weekStart + 6);
         break;
       case 'thisMonth':
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -67,7 +68,10 @@ const AccountingManagement: React.FC = () => {
         break;
       default:
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     }
+    // ตรวจสอบให้แน่ใจว่า endDate อยู่ที่สิ้นสุดของวัน
+    endDate.setHours(23, 59, 59, 999);
 
     return {
       start: startDate.toISOString().split('T')[0],
@@ -100,12 +104,25 @@ const AccountingManagement: React.FC = () => {
 
       if (paymentsError) throw paymentsError;
 
-      // คำนวณสรุปข้อมูล
+      // ใหม่: โหลดข้อมูลค่าใช้จ่ายสาขา (สมมติว่ามีตาราง 'branch_expenses')
+      const { data: expensesData, error: expensesError } = await supabase
+        .from('branch_expenses') // คุณต้องมีตารางชื่อ 'branch_expenses' ใน Supabase
+        .select('*')
+        .gte('expense_date', start) // สมมติว่ามีคอลัมน์ 'expense_date' สำหรับวันที่
+        .lte('expense_date', end);
+
+      if (expensesError) throw expensesError;
+
+
+      // คำนวณข้อมูลสรุป
       const totalSalesIncome = salesData?.reduce((sum, sale) => sum + sale.total_amount, 0) || 0;
       const totalHirePurchaseIncome = paymentsData?.reduce((sum, payment) => sum + payment.amount_paid, 0) || 0;
       const totalIncome = totalSalesIncome + totalHirePurchaseIncome;
 
-      // สร้างรายการ transactions
+      const totalExpense = expensesData?.reduce((sum, expense) => sum + expense.amount, 0) || 0; // รวมค่าใช้จ่าย
+      const netProfit = totalIncome - totalExpense; // คำนวณกำไรสุทธิ
+
+      // สร้างรายการธุรกรรม
       const salesTransactions: Transaction[] = salesData?.map(sale => ({
         id: sale.id,
         type: 'income' as const,
@@ -128,14 +145,29 @@ const AccountingManagement: React.FC = () => {
         reference_id: payment.id
       })) || [];
 
-      const allTransactions = [...salesTransactions, ...paymentTransactions]
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      // ใหม่: แปลงค่าใช้จ่ายเป็นรายการธุรกรรม
+      const expenseTransactions: Transaction[] = expensesData?.map(expense => ({
+        id: expense.id,
+        type: 'expense' as const,
+        category: expense.category || 'ทั่วไป', // สมมติว่ามีคอลัมน์ 'category' สำหรับค่าใช้จ่าย
+        amount: expense.amount,
+        description: expense.description || 'ค่าใช้จ่ายสาขา', // สมมติว่ามีคอลัมน์ 'description'
+        date: expense.expense_date,
+        reference_type: 'branch_expense',
+        reference_id: expense.id
+      })) || [];
+
+      const allTransactions = [
+        ...salesTransactions, 
+        ...paymentTransactions, 
+        ...expenseTransactions // รวมรายการค่าใช้จ่าย
+      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       setTransactions(allTransactions);
       setSummary({
         totalIncome,
-        totalExpense: 0, // สำหรับในอนาคตจะเพิ่มข้อมูลค่าใช้จ่าย
-        netProfit: totalIncome,
+        totalExpense, // ตั้งค่า totalExpense
+        netProfit,    // ตั้งค่า netProfit
         salesCount: salesData?.length || 0,
         hirePurchaseIncome: totalHirePurchaseIncome
       });
@@ -158,7 +190,7 @@ const AccountingManagement: React.FC = () => {
   const getTransactionIcon = (transaction: Transaction) => {
     return transaction.type === 'income' ? 
       <TrendingUp className="h-4 w-4 text-green-600" /> :
-      <TrendingDown className="h-4 w-4 text-red-600" />;
+      <MinusCircle className="h-4 w-4 text-red-600" />; // เปลี่ยนเป็น MinusCircle สำหรับค่าใช้จ่าย
   };
 
   const getTransactionColor = (transaction: Transaction) => {
@@ -204,7 +236,7 @@ const AccountingManagement: React.FC = () => {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-600">ค่าใช้จ่าย</p>
+                <p className="text-sm font-medium text-slate-600">ค่าใช้จ่ายรวม</p> {/* เปลี่ยนชื่อหัวข้อ */}
                 <p className="text-2xl font-bold text-red-600">{formatCurrency(summary.totalExpense)}</p>
               </div>
               <TrendingDown className="h-8 w-8 text-red-600" />
