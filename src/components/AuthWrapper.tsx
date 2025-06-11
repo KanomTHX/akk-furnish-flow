@@ -16,7 +16,7 @@ const AuthWrapper: React.FC<AuthWrapperProps> = ({ children }) => {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-furniture-600 mx-auto mb-4" />
-          <p className="text-slate-600">กำลังโหลด...</p>
+          <p className="text-black">กำลังโหลด...</p>
         </div>
       </div>
     );

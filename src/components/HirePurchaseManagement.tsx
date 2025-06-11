@@ -185,7 +185,7 @@ const HirePurchaseManagement: React.FC = () => {
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <CreditCard className="h-6 w-6 text-furniture-500" />
-          <h2 className="text-2xl font-bold text-slate-900">ระบบเช่าซื้อ</h2>
+          <h2 className="text-2xl font-bold text-black">ระบบเช่าซื้อ</h2>
         </div>
         <Button 
           onClick={() => setIsCreateFormOpen(true)}
@@ -200,12 +200,12 @@ const HirePurchaseManagement: React.FC = () => {
         {/* รายการสัญญา */}
         <Card>
           <CardHeader>
-            <CardTitle>รายการสัญญาเช่าซื้อ</CardTitle>
+            <CardTitle className="text-black">รายการสัญญาเช่าซื้อ</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4 max-h-96 overflow-y-auto">
               {contracts.length === 0 ? (
-                <p className="text-center text-slate-500 py-8">ยังไม่มีสัญญาเช่าซื้อ</p>
+                <p className="text-center text-black py-8">ยังไม่มีสัญญาเช่าซื้อ</p>
               ) : (
                 contracts.map((contract) => (
                   <div
@@ -217,20 +217,20 @@ const HirePurchaseManagement: React.FC = () => {
                   >
                     <div className="flex justify-between items-start mb-2">
                       <div>
-                        <h3 className="font-medium">{contract.contract_number}</h3>
-                        <p className="text-sm text-slate-600">{contract.customer.name}</p>
-                        <p className="text-xs text-slate-500">{contract.customer.phone}</p>
+                        <h3 className="font-medium text-black">{contract.contract_number}</h3>
+                        <p className="text-sm text-black">{contract.customer.name}</p>
+                        <p className="text-xs text-black">{contract.customer.phone}</p>
                       </div>
                       {getStatusBadge(contract.status)}
                     </div>
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
-                        <p className="text-slate-600">ยอดรวม: ฿{contract.total_amount.toLocaleString()}</p>
-                        <p className="text-slate-600">คงเหลือ: ฿{contract.remaining_amount.toLocaleString()}</p>
+                        <p className="text-black">ยอดรวม: ฿{contract.total_amount.toLocaleString()}</p>
+                        <p className="text-black">คงเหลือ: ฿{contract.remaining_amount.toLocaleString()}</p>
                       </div>
                       <div>
-                        <p className="text-slate-600">งวดละ: ฿{contract.monthly_payment.toLocaleString()}</p>
-                        <p className="text-slate-600">วันทำสัญญา: {new Date(contract.contract_date).toLocaleDateString('th-TH')}</p>
+                        <p className="text-black">งวดละ: ฿{contract.monthly_payment.toLocaleString()}</p>
+                        <p className="text-black">วันทำสัญญา: {new Date(contract.contract_date).toLocaleDateString('th-TH')}</p>
                       </div>
                     </div>
                   </div>
@@ -243,7 +243,7 @@ const HirePurchaseManagement: React.FC = () => {
         {/* รายการการชำระ */}
         <Card>
           <CardHeader>
-            <CardTitle>
+            <CardTitle className="text-black">
               {selectedContract ? `การชำระงวด - ${selectedContract.contract_number}` : 'เลือกสัญญาเพื่อดูรายการชำระ'}
             </CardTitle>
           </CardHeader>
@@ -251,12 +251,12 @@ const HirePurchaseManagement: React.FC = () => {
             {selectedContract ? (
               <div className="space-y-4">
                 <div className="bg-slate-50 p-3 rounded-lg">
-                  <h4 className="font-medium mb-2">{selectedContract.customer.name}</h4>
+                  <h4 className="font-medium mb-2 text-black">{selectedContract.customer.name}</h4>
                   <div className="grid grid-cols-2 gap-2 text-sm">
-                    <p>ยอดรวม: ฿{selectedContract.total_amount.toLocaleString()}</p>
-                    <p>เงินดาวน์: ฿{selectedContract.down_payment.toLocaleString()}</p>
-                    <p>คงเหลือ: ฿{selectedContract.remaining_amount.toLocaleString()}</p>
-                    <p>งวดละ: ฿{selectedContract.monthly_payment.toLocaleString()}</p>
+                    <p className="text-black">ยอดรวม: ฿{selectedContract.total_amount.toLocaleString()}</p>
+                    <p className="text-black">เงินดาวน์: ฿{selectedContract.down_payment.toLocaleString()}</p>
+                    <p className="text-black">คงเหลือ: ฿{selectedContract.remaining_amount.toLocaleString()}</p>
+                    <p className="text-black">งวดละ: ฿{selectedContract.monthly_payment.toLocaleString()}</p>
                   </div>
                 </div>
 
@@ -265,8 +265,8 @@ const HirePurchaseManagement: React.FC = () => {
                     <div key={payment.id} className="border rounded-lg p-3">
                       <div className="flex justify-between items-start mb-2">
                         <div>
-                          <h4 className="font-medium">งวดที่ {payment.installment_number}</h4>
-                          <p className="text-sm text-slate-600">
+                          <h4 className="font-medium text-black">งวดที่ {payment.installment_number}</h4>
+                          <p className="text-sm text-black">
                             กำหนดชำระ: {new Date(payment.due_date).toLocaleDateString('th-TH')}
                           </p>
                         </div>
@@ -274,15 +274,15 @@ const HirePurchaseManagement: React.FC = () => {
                       </div>
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span>ยอดที่ต้องชำระ:</span>
-                          <span>฿{payment.amount_due.toLocaleString()}</span>
+                          <span className="text-black">ยอดที่ต้องชำระ:</span>
+                          <span className="text-black">฿{payment.amount_due.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span>ยอดที่ชำระแล้ว:</span>
-                          <span>฿{payment.amount_paid.toLocaleString()}</span>
+                          <span className="text-black">ยอดที่ชำระแล้ว:</span>
+                          <span className="text-black">฿{payment.amount_paid.toLocaleString()}</span>
                         </div>
                         <div className="flex justify-between text-sm font-medium">
-                          <span>คงเหลือ:</span>
+                          <span className="text-black">คงเหลือ:</span>
                           <span className="text-red-600">฿{(payment.amount_due - payment.amount_paid).toLocaleString()}</span>
                         </div>
 
@@ -324,7 +324,7 @@ const HirePurchaseManagement: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <p className="text-center text-slate-500 py-8">กรุณาเลือกสัญญาจากรายการด้านซ้าย</p>
+              <p className="text-center text-black py-8">กรุณาเลือกสัญญาจากรายการด้านซ้าย</p>
             )}
           </CardContent>
         </Card>

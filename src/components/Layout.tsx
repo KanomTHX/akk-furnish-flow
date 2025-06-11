@@ -43,15 +43,15 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
                   <Store className="h-6 w-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold text-foreground">AKK Sell and Service</h1>
-                  <p className="text-sm text-muted-foreground">ระบบขายและเช่าซื้อเฟอร์นิเจอร์</p>
+                  <h1 className="text-xl font-bold text-black">AKK Sell and Service</h1>
+                  <p className="text-sm text-black">ระบบขายและเช่าซื้อเฟอร์นิเจอร์</p>
                 </div>
               </div>
             </div>
             
             <div className="flex items-center space-x-4">
-              <div className="text-sm text-muted-foreground">
-                ยินดีต้อนรับ, <span className="font-medium text-foreground">{userProfile?.full_name}</span>
+              <div className="text-sm text-black">
+                ยินดีต้อนรับ, <span className="font-medium text-black">{userProfile?.full_name}</span>
                 <div className="text-xs text-furniture-600">
                   {userProfile?.role === 'admin' && 'แอดมิน'}
                   {userProfile?.role === 'sales' && 'พนักงานขาย'}
@@ -65,7 +65,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
                 variant="ghost"
                 size="sm"
                 onClick={handleSignOut}
-                className="text-muted-foreground hover:text-foreground"
+                className="text-black hover:text-black"
               >
                 <LogOut className="h-4 w-4 mr-2" />
                 ออกจากระบบ
@@ -89,7 +89,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
                     "flex items-center space-x-2 py-4 px-2 border-b-2 font-medium text-sm whitespace-nowrap transition-colors",
                     activeTab === tab.id
                       ? "border-furniture-500 text-furniture-600"
-                      : "border-transparent text-muted-foreground hover:text-foreground hover:border-slate-300"
+                      : "border-transparent text-black hover:text-black hover:border-slate-300"
                   )}
                 >
                   <Icon className="h-4 w-4" />

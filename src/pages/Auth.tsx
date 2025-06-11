@@ -65,10 +65,10 @@ const Auth = () => {
               <Store className="h-7 w-7 text-white" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold text-slate-900">
+          <CardTitle className="text-2xl font-bold text-black">
             AKK Sell and Service
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-black">
             {isSignUp ? 'สร้างบัญชีใหม่' : 'เข้าสู่ระบบ'}
           </CardDescription>
         </CardHeader>
@@ -76,7 +76,7 @@ const Auth = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             {isSignUp && (
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label className="block text-sm font-medium text-black mb-1">
                   ชื่อ-นามสกุล
                 </label>
                 <Input
@@ -89,7 +89,7 @@ const Auth = () => {
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+              <label className="block text-sm font-medium text-black mb-1">
                 อีเมล
               </label>
               <Input
@@ -101,7 +101,7 @@ const Auth = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
+              <label className="block text-sm font-medium text-black mb-1">
                 รหัสผ่าน
               </label>
               <Input
