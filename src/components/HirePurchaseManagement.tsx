@@ -48,6 +48,7 @@ const HirePurchaseManagement: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+  const [paymentDetails, setPaymentDetails] = useState('');
 
   useEffect(() => {
     loadContracts();
