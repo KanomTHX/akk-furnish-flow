@@ -10,7 +10,7 @@ import { Users, Plus, Search, Edit, Bell, CreditCard } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import CustomerEditModal from './CustomerEditModal';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // เพิ่มการนำเข้านี้
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 // อินเทอร์เฟซสำหรับข้อมูลภูมิศาสตร์
 interface Province {
@@ -27,7 +27,8 @@ interface District {
 interface SubDistrict {
   id: string;
   name_th: string;
-  district_id: string;
+  districts_id: string; // แก้เป็น districts_id ตามที่คุณแก้ไขไปแล้ว
+  zip_code?: string; // เพิ่มฟิลด์รหัสไปรษณีย์
 }
 
 interface Customer {
@@ -35,15 +36,14 @@ interface Customer {
   name: string;
   phone: string;
   email?: string;
-  // เปลี่ยนจาก address? เป็นฟิลด์ที่อยู่ใหม่
   address_detail?: string;
   province_id?: string;
   district_id?: string;
   sub_district_id?: string;
-  // เพิ่มฟิลด์สำหรับชื่อจังหวัด อำเภอ ตำบล เพื่อการแสดงผล
   province_name?: string;
   district_name?: string;
   sub_district_name?: string;
+  zip_code?: string; // เพิ่มฟิลด์สำหรับรหัสไปรษณีย์ของลูกค้า
   customer_type: string;
   total_purchases?: number;
   last_purchase_date?: string;
@@ -62,19 +62,21 @@ const CustomerManagement: React.FC = () => {
   // สถานะสำหรับข้อมูลภูมิศาสตร์
   const [provinces, setProvinces] = useState<Province[]>([]);
   const [districts, setDistricts] = useState<District[]>([]);
-  const [subDistricts, setSubDistricts] = useState<SubDistrict[]>([]);
+  const [subDistricts, setSubDistricts] = useState<SubDistrict[]>([]); // เพิ่ม zip_code ใน Type
 
   // สถานะสำหรับค่าที่เลือกใน Dropdown
   const [selectedProvinceId, setSelectedProvinceId] = useState<string | null>(null);
   const [selectedDistrictId, setSelectedDistrictId] = useState<string | null>(null);
   const [selectedSubDistrictId, setSelectedSubDistrictId] = useState<string | null>(null);
+  const [selectedZipCode, setSelectedZipCode] = useState<string | null>(null); // เพิ่มสถานะสำหรับรหัสไปรษณีย์
 
   // สถานะสำหรับลูกค้าใหม่ (ปรับฟิลด์ที่อยู่)
   const [newCustomer, setNewCustomer] = useState({
     name: '',
     phone: '',
     email: '',
-    address_detail: '' // ฟิลด์สำหรับที่อยู่เพิ่มเติม
+    address_detail: '',
+    zip_code: '' // เพิ่มฟิลด์รหัสไปรษณีย์ใน newCustomer
   });
 
   useEffect(() => {
@@ -100,9 +102,10 @@ const CustomerManagement: React.FC = () => {
     const loadDistricts = async () => {
       if (!selectedProvinceId) {
         setDistricts([]);
-        setSelectedDistrictId(null); // รีเซ็ตอำเภอ
-        setSubDistricts([]); // รีเซ็ตตำบล
+        setSelectedDistrictId(null);
+        setSubDistricts([]);
         setSelectedSubDistrictId(null);
+        setSelectedZipCode(null); // รีเซ็ตรหัสไปรษณีย์
         return;
       }
       const { data, error } = await supabase.from('districts').select('id, name_th, province_id').eq('province_id', selectedProvinceId).order('name_th');
@@ -121,10 +124,12 @@ const CustomerManagement: React.FC = () => {
     const loadSubDistricts = async () => {
       if (!selectedDistrictId) {
         setSubDistricts([]);
-        setSelectedSubDistrictId(null); // รีเซ็ตตำบล
+        setSelectedSubDistrictId(null);
+        setSelectedZipCode(null); // รีเซ็ตรหัสไปรษณีย์
         return;
       }
-      const { data, error } = await supabase.from('sub_districts').select('id, name_th, districts_id').eq('districts_id', selectedDistrictId).order('name_th');
+      // แก้ไข: ดึงฟิลด์ 'zip_code' ด้วย
+      const { data, error } = await supabase.from('sub_districts').select('id, name_th, districts_id, zip_code').eq('districts_id', selectedDistrictId).order('name_th');
       if (error) {
         console.error('Error loading sub-districts:', error);
         toast({ title: "ข้อผิดพลาด", description: "ไม่สามารถโหลดข้อมูลตำบลได้", variant: "destructive" });
@@ -135,19 +140,38 @@ const CustomerManagement: React.FC = () => {
     loadSubDistricts();
   }, [selectedDistrictId]);
 
+  // ตั้งค่ารหัสไปรษณีย์เมื่อตำบลมีการเปลี่ยนแปลง
+  useEffect(() => {
+    if (selectedSubDistrictId) {
+      const selectedSub = subDistricts.find(sub => sub.id === selectedSubDistrictId);
+      if (selectedSub?.zip_code) {
+        setSelectedZipCode(selectedSub.zip_code);
+        setNewCustomer(prev => ({ ...prev, zip_code: selectedSub.zip_code as string }));
+      } else {
+        setSelectedZipCode(null);
+        setNewCustomer(prev => ({ ...prev, zip_code: '' }));
+      }
+    } else {
+      setSelectedZipCode(null);
+      setNewCustomer(prev => ({ ...prev, zip_code: '' }));
+    }
+  }, [selectedSubDistrictId, subDistricts]);
+
+
   const loadCustomers = async () => {
-    // ใช้ select แบบ join เพื่อดึงชื่อจังหวัด อำเภอ ตำบล มาแสดงด้วย
+    // ใช้ select แบบ join เพื่อดึงชื่อจังหวัด อำเภอ ตำบล และรหัสไปรษณีย์ มาแสดงด้วย
     const { data, error } = await supabase
       .from('customers')
       .select(`
         *,
         provinces!inner(name_th),
         districts!inner(name_th),
-        sub_districts!inner(name_th)
+        sub_districts!inner(name_th, zip_code)
       `)
       .order('created_at', { ascending: false });
-    
+
     if (error) {
+      console.error('*** Supabase Error in loadCustomers:', error); 
       toast({
         title: "ข้อผิดพลาด",
         description: "ไม่สามารถโหลดข้อมูลลูกค้าได้",
@@ -162,32 +186,37 @@ const CustomerManagement: React.FC = () => {
         province_name: customer.provinces?.name_th,
         district_name: customer.districts?.name_th,
         sub_district_name: customer.sub_districts?.name_th,
+        zip_code: customer.sub_districts?.zip_code, // ดึงรหัสไปรษณีย์มาใส่ใน Customer
     }));
-    
+
     setCustomers(formattedCustomers || []);
   };
 
   const filteredCustomers = customers.filter(customer => {
     const matchesSearch = customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         customer.phone.includes(searchTerm) ||
-                         (customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
-                         (customer.province_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
-                         (customer.district_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
-                         (customer.sub_district_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
-                         (customer.address_detail?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
+                           customer.phone.includes(searchTerm) ||
+                           (customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+                           (customer.province_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+                           (customer.district_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+                           (customer.sub_district_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+                           (customer.zip_code?.includes(searchTerm) ?? false) || // เพิ่มการค้นหาด้วยรหัสไปรษณีย์
+                           (customer.address_detail?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
     const matchesFilter = filterType === 'all' || customer.customer_type === filterType;
     return matchesSearch && matchesFilter;
   });
 
   const handleAddCustomer = async () => {
-    if (!newCustomer.name || !newCustomer.phone || !selectedProvinceId || !selectedDistrictId || !selectedSubDistrictId) {
+    if (!newCustomer.name || !newCustomer.phone || !selectedProvinceId || !selectedDistrictId || !selectedSubDistrictId || !selectedZipCode) { // เพิ่มการตรวจสอบรหัสไปรษณีย์
       toast({
         title: "ข้อผิดพลาด",
-        description: "กรุณากรอกชื่อ, เบอร์โทรศัพท์, จังหวัด, อำเภอ และตำบล",
+        description: "กรุณากรอกชื่อ, เบอร์โทรศัพท์, จังหวัด, อำเภอ, ตำบล และรหัสไปรษณีย์",
         variant: "destructive"
       });
       return;
     }
+
+
+
 
     try {
       const { error } = await supabase
@@ -200,6 +229,7 @@ const CustomerManagement: React.FC = () => {
           province_id: selectedProvinceId,
           district_id: selectedDistrictId,
           sub_district_id: selectedSubDistrictId,
+          zip_code: selectedZipCode, // เพิ่มการบันทึกรหัสไปรษณีย์
           customer_type: 'regular'
         });
 
@@ -209,13 +239,13 @@ const CustomerManagement: React.FC = () => {
         title: "สำเร็จ",
         description: "เพิ่มลูกค้าเรียบร้อย"
       });
-      
+
       // รีเซ็ตฟอร์ม
-      setNewCustomer({ name: '', phone: '', email: '', address_detail: '' });
+      setNewCustomer({ name: '', phone: '', email: '', address_detail: '', zip_code: '' });
       setSelectedProvinceId(null);
       setSelectedDistrictId(null);
       setSelectedSubDistrictId(null);
-      
+      setSelectedZipCode(null); // รีเซ็ตรหัสไปรษณีย์ที่เลือก
       setIsAddDialogOpen(false);
       loadCustomers(); // โหลดข้อมูลลูกค้าใหม่
     } catch (error: any) {
@@ -252,7 +282,7 @@ const CustomerManagement: React.FC = () => {
           <Users className="h-6 w-6 text-furniture-500" />
           <h2 className="text-2xl font-bold text-slate-900">จัดการลูกค้า</h2>
         </div>
-        
+
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
             <Button className="bg-furniture-500 hover:bg-furniture-600">
@@ -345,6 +375,17 @@ const CustomerManagement: React.FC = () => {
                 </Select>
               </div>
 
+              {/* รหัสไปรษณีย์ (แสดงผลอัตโนมัติ) */}
+              <div>
+                <Label htmlFor="customerZipCode">รหัสไปรษณีย์</Label>
+                <Input
+                  id="customerZipCode"
+                  value={selectedZipCode || ''} // แสดงค่าที่ได้จากการเลือกตำบล
+                  readOnly // ทำให้แก้ไขไม่ได้
+                  placeholder="รหัสไปรษณีย์จะแสดงอัตโนมัติ"
+                />
+              </div>
+
               {/* ที่อยู่เพิ่มเติม */}
               <div>
                 <Label htmlFor="customerAddressDetail">ที่อยู่เพิ่มเติม (บ้านเลขที่, ถนน, หมู่ ฯลฯ)</Label>
@@ -385,7 +426,7 @@ const CustomerManagement: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="pt-6">
             <div className="grid grid-cols-2 gap-2">
@@ -481,6 +522,7 @@ const CustomerManagement: React.FC = () => {
                           {customer.district_name || ''}
                           {customer.district_name && customer.province_name ? ', ' : ''}
                           {customer.province_name || 'ไม่ระบุ'}
+                          {customer.zip_code ? ` ${customer.zip_code}` : ''} {/* แสดงรหัสไปรษณีย์ */}
                         </p>
                       </div>
                       <div>
@@ -490,10 +532,10 @@ const CustomerManagement: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="flex flex-col space-y-2">
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => handleEditCustomer(customer)}
                     >
