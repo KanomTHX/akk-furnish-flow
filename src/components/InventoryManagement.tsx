@@ -7,10 +7,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Package, Plus, Search, Edit, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
+import { Package, Plus, Search, Edit, AlertTriangle, TrendingUp, TrendingDown, Download } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import Papa from 'papaparse'; // ต้องติดตั้ง papaparse เพิ่มเติม
+
+// ตรวจสอบให้แน่ใจว่าได้ติดตั้ง papaparse แล้ว:
+// npm install papaparse
 
 interface Product {
   id: string;
@@ -24,7 +28,7 @@ interface Product {
   brand?: string;
   model?: string;
   description?: string;
-  imageUrl?: string; // Added imageUrl to the interface
+  imageUrl?: string;
 }
 
 interface Movement {
@@ -66,6 +70,7 @@ const InventoryManagement: React.FC = () => {
     description: ''
   });
   const [newProductImage, setNewProductImage] = useState<File | null>(null);
+  const [exportPeriod, setExportPeriod] = useState('1month'); // สถานะใหม่สำหรับช่วงเวลาการส่งออก
 
   useEffect(() => {
     loadProducts();
@@ -148,7 +153,7 @@ const InventoryManagement: React.FC = () => {
           brand: newProduct.brand || null,
           model: newProduct.model || null,
           description: newProduct.description || null,
-          imageUrl: imageUrl, // Use imageUrl as it's defined in the interface
+          imageUrl: imageUrl,
         });
 
       if (error) throw error;
@@ -159,7 +164,7 @@ const InventoryManagement: React.FC = () => {
         name: '', code: '', category: '', price: '', cost: '', stock_quantity: '',
         min_stock_level: '5', brand: '', model: '', description: ''
       });
-      setNewProductImage(null); // Reset file input
+      setNewProductImage(null);
       loadProducts();
 
     } catch (error: any) {
@@ -192,7 +197,6 @@ const InventoryManagement: React.FC = () => {
         return;
       }
 
-      // อัปเดตสต็อก
       const { error: stockError } = await supabase
         .from('products')
         .update({ stock_quantity: newStockQuantity })
@@ -200,7 +204,6 @@ const InventoryManagement: React.FC = () => {
 
       if (stockError) throw stockError;
 
-      // บันทึกการเคลื่อนไหว
       const { error: movementError } = await supabase
         .from('inventory_movements')
         .insert({
@@ -251,6 +254,89 @@ const InventoryManagement: React.FC = () => {
 
   const lowStockProducts = products.filter(p => p.stock_quantity <= p.min_stock_level);
 
+  const exportMovementsToCsv = async () => {
+    let startDate: Date;
+    const endDate = new Date(); // วันที่ปัจจุบัน
+
+    switch (exportPeriod) {
+      case '1month':
+        startDate = new Date();
+        startDate.setMonth(endDate.getMonth() - 1);
+        break;
+      case '2months':
+        startDate = new Date();
+        startDate.setMonth(endDate.getMonth() - 2);
+        break;
+      case '3months':
+        startDate = new Date();
+        startDate.setMonth(endDate.getMonth() - 3);
+        break;
+      case '6months':
+        startDate = new Date();
+        startDate.setMonth(endDate.getMonth() - 6);
+        break;
+      case '1year':
+        startDate = new Date();
+        startDate.setFullYear(endDate.getFullYear() - 1);
+        break;
+      case 'all': // เพิ่มตัวเลือก "ทั้งหมด" เพื่อดึงข้อมูลทั้งหมด
+        startDate = new Date(0); // Epoch, เพื่อดึงข้อมูลทั้งหมด
+        break;
+      default:
+        startDate = new Date(0); // ค่าเริ่มต้น: ดึงข้อมูลทั้งหมด
+        break;
+    }
+
+    const { data, error } = await supabase
+      .from('inventory_movements')
+      .select(`
+        *,
+        product:products(name, code, category),
+        created_by_profile:profiles!inventory_movements_created_by_fkey(full_name)
+      `)
+      .gte('created_at', startDate.toISOString()) // กรองตั้งแต่วันที่เริ่มต้น
+      .lte('created_at', endDate.toISOString())   // กรองจนถึงวันที่สิ้นสุด (ปัจจุบัน)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      toast({ title: "ข้อผิดพลาด", description: "ไม่สามารถโหลดข้อมูลการเคลื่อนไหวเพื่อส่งออกได้", variant: "destructive" });
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      toast({ title: "แจ้งเตือน", description: "ไม่มีข้อมูลการเคลื่อนไหวในช่วงเวลาที่เลือก", variant: "default" });
+      return;
+    }
+
+    // เตรียมข้อมูลสำหรับ CSV
+    const csvData = data.map(movement => ({
+      'ชื่อสินค้า': movement.product.name,
+      'รหัสสินค้า': movement.product.code,
+      'หมวดหมู่': movement.product.category,
+      'ประเภทการเคลื่อนไหว': movement.movement_type === 'in' ? 'เข้า' : 'ออก',
+      'จำนวน': movement.quantity,
+      'ประเภทอ้างอิง': movement.reference_type || '',
+      'หมายเหตุ': movement.notes || '',
+      'วันที่เคลื่อนไหว': new Date(movement.created_at).toLocaleString('th-TH'),
+      'สร้างโดย': movement.created_by_profile?.full_name || 'N/A',
+    }));
+
+    // แปลงข้อมูลเป็น CSV ด้วย PapaParse
+    const csv = Papa.unparse(csvData);
+
+    // สร้าง Blob และ URL สำหรับดาวน์โหลด
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `inventory_movements_${exportPeriod}_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.style.visibility = 'hidden'; // ซ่อนลิงก์
+    document.body.appendChild(link); // เพิ่มลิงก์ลงใน DOM ชั่วคราว
+    link.click(); // คลิกเพื่อดาวน์โหลด
+    document.body.removeChild(link); // ลบลิงก์ออกจาก DOM
+    toast({ title: "สำเร็จ", description: "ส่งออกข้อมูลเรียบร้อย" });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -260,6 +346,7 @@ const InventoryManagement: React.FC = () => {
         </div>
         
         <div className="flex space-x-2">
+          {/* ส่วน Dialog ปรับสต็อกที่มีอยู่แล้ว */}
           <Dialog open={isAdjustStockOpen} onOpenChange={setIsAdjustStockOpen}>
             <DialogTrigger asChild>
               <Button variant="outline">ปรับสต็อก</Button>
@@ -329,6 +416,7 @@ const InventoryManagement: React.FC = () => {
             </DialogContent>
           </Dialog>
 
+          {/* ส่วน Dialog เพิ่มสินค้าที่มีอยู่แล้ว */}
           <Dialog open={isAddProductOpen} onOpenChange={setIsAddProductOpen}>
             <DialogTrigger asChild>
               <Button className="bg-furniture-500 hover:bg-furniture-600">
@@ -512,7 +600,7 @@ const InventoryManagement: React.FC = () => {
               <div className="space-y-4 max-h-96 overflow-y-auto">
                 {filteredProducts.map((product) => (
                   <div key={product.id} className="border rounded-lg p-4 flex items-center space-x-4">
-                    {product.imageUrl && ( // Check if imageUrl exists
+                    {product.imageUrl && (
                       <img 
                         src={product.imageUrl} 
                         alt={product.name} 
@@ -563,11 +651,32 @@ const InventoryManagement: React.FC = () => {
           </Card>
         </div>
 
-        {/* ประวัติการเคลื่อนไหว */}
+        {/* ประวัติการเคลื่อนไหว (ส่วนที่มีการเพิ่มฟังก์ชัน Export) */}
         <div>
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle>ประวัติการเคลื่อนไหว</CardTitle>
+              <div className="flex space-x-2">
+                {/* Dropdown สำหรับเลือกช่วงเวลา */}
+                <Select value={exportPeriod} onValueChange={setExportPeriod}>
+                  <SelectTrigger className="w-[120px]">
+                    <SelectValue placeholder="เลือกช่วงเวลา" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1month">1 เดือน</SelectItem>
+                    <SelectItem value="2months">2 เดือน</SelectItem>
+                    <SelectItem value="3months">3 เดือน</SelectItem>
+                    <SelectItem value="6months">6 เดือน</SelectItem>
+                    <SelectItem value="1year">1 ปี</SelectItem>
+                    <SelectItem value="all">ทั้งหมด</SelectItem> {/* เพิ่มตัวเลือก "ทั้งหมด" */}
+                  </SelectContent>
+                </Select>
+                {/* ปุ่ม Export CSV */}
+                <Button onClick={exportMovementsToCsv} size="sm" variant="outline">
+                  <Download className="h-4 w-4 mr-1" />
+                  Export CSV
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-3 max-h-96 overflow-y-auto">
