@@ -115,7 +115,7 @@ const InventoryManagement: React.FC = () => {
       if (newProductImage) {
         const fileExtension = newProductImage.name.split('.').pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExtension}`;
-        const filePath = `product_images/${fileName}`;
+        const filePath = `product-images/${fileName}`;
 
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('furniture-images')
