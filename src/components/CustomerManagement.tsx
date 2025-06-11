@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,13 +10,40 @@ import { Users, Plus, Search, Edit, Bell, CreditCard } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import CustomerEditModal from './CustomerEditModal';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; // เพิ่มการนำเข้านี้
+
+// อินเทอร์เฟซสำหรับข้อมูลภูมิศาสตร์
+interface Province {
+  id: string;
+  name_th: string;
+}
+
+interface District {
+  id: string;
+  name_th: string;
+  province_id: string;
+}
+
+interface SubDistrict {
+  id: string;
+  name_th: string;
+  district_id: string;
+}
 
 interface Customer {
   id: string;
   name: string;
   phone: string;
   email?: string;
-  address?: string;
+  // เปลี่ยนจาก address? เป็นฟิลด์ที่อยู่ใหม่
+  address_detail?: string;
+  province_id?: string;
+  district_id?: string;
+  sub_district_id?: string;
+  // เพิ่มฟิลด์สำหรับชื่อจังหวัด อำเภอ ตำบล เพื่อการแสดงผล
+  province_name?: string;
+  district_name?: string;
+  sub_district_name?: string;
   customer_type: string;
   total_purchases?: number;
   last_purchase_date?: string;
@@ -32,21 +58,93 @@ const CustomerManagement: React.FC = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  // สถานะสำหรับข้อมูลภูมิศาสตร์
+  const [provinces, setProvinces] = useState<Province[]>([]);
+  const [districts, setDistricts] = useState<District[]>([]);
+  const [subDistricts, setSubDistricts] = useState<SubDistrict[]>([]);
+
+  // สถานะสำหรับค่าที่เลือกใน Dropdown
+  const [selectedProvinceId, setSelectedProvinceId] = useState<string | null>(null);
+  const [selectedDistrictId, setSelectedDistrictId] = useState<string | null>(null);
+  const [selectedSubDistrictId, setSelectedSubDistrictId] = useState<string | null>(null);
+
+  // สถานะสำหรับลูกค้าใหม่ (ปรับฟิลด์ที่อยู่)
   const [newCustomer, setNewCustomer] = useState({
     name: '',
     phone: '',
     email: '',
-    address: ''
+    address_detail: '' // ฟิลด์สำหรับที่อยู่เพิ่มเติม
   });
 
   useEffect(() => {
     loadCustomers();
   }, []);
 
+  // โหลดจังหวัดเมื่อคอมโพเนนต์โหลดครั้งแรก
+  useEffect(() => {
+    const loadProvinces = async () => {
+      const { data, error } = await supabase.from('provinces').select('id, name_th').order('name_th');
+      if (error) {
+        console.error('Error loading provinces:', error);
+        toast({ title: "ข้อผิดพลาด", description: "ไม่สามารถโหลดข้อมูลจังหวัดได้", variant: "destructive" });
+        return;
+      }
+      setProvinces(data || []);
+    };
+    loadProvinces();
+  }, []);
+
+  // โหลดอำเภอเมื่อจังหวัดมีการเปลี่ยนแปลง
+  useEffect(() => {
+    const loadDistricts = async () => {
+      if (!selectedProvinceId) {
+        setDistricts([]);
+        setSelectedDistrictId(null); // รีเซ็ตอำเภอ
+        setSubDistricts([]); // รีเซ็ตตำบล
+        setSelectedSubDistrictId(null);
+        return;
+      }
+      const { data, error } = await supabase.from('districts').select('id, name_th, province_id').eq('province_id', selectedProvinceId).order('name_th');
+      if (error) {
+        console.error('Error loading districts:', error);
+        toast({ title: "ข้อผิดพลาด", description: "ไม่สามารถโหลดข้อมูลอำเภอได้", variant: "destructive" });
+        return;
+      }
+      setDistricts(data || []);
+    };
+    loadDistricts();
+  }, [selectedProvinceId]);
+
+  // โหลดตำบลเมื่ออำเภอมีการเปลี่ยนแปลง
+  useEffect(() => {
+    const loadSubDistricts = async () => {
+      if (!selectedDistrictId) {
+        setSubDistricts([]);
+        setSelectedSubDistrictId(null); // รีเซ็ตตำบล
+        return;
+      }
+      const { data, error } = await supabase.from('sub_districts').select('id, name_th, district_id').eq('district_id', selectedDistrictId).order('name_th');
+      if (error) {
+        console.error('Error loading sub-districts:', error);
+        toast({ title: "ข้อผิดพลาด", description: "ไม่สามารถโหลดข้อมูลตำบลได้", variant: "destructive" });
+        return;
+      }
+      setSubDistricts(data || []);
+    };
+    loadSubDistricts();
+  }, [selectedDistrictId]);
+
   const loadCustomers = async () => {
+    // ใช้ select แบบ join เพื่อดึงชื่อจังหวัด อำเภอ ตำบล มาแสดงด้วย
     const { data, error } = await supabase
       .from('customers')
-      .select('*')
+      .select(`
+        *,
+        provinces!inner(name_th),
+        districts!inner(name_th),
+        sub_districts!inner(name_th)
+      `)
       .order('created_at', { ascending: false });
     
     if (error) {
@@ -57,22 +155,35 @@ const CustomerManagement: React.FC = () => {
       });
       return;
     }
-    setCustomers(data || []);
+
+    // ปรับโครงสร้างข้อมูลที่ได้รับมาเพื่อให้เข้ากับ Customer interface
+    const formattedCustomers: Customer[] = data.map((customer: any) => ({
+        ...customer,
+        province_name: customer.provinces?.name_th,
+        district_name: customer.districts?.name_th,
+        sub_district_name: customer.sub_districts?.name_th,
+    }));
+    
+    setCustomers(formattedCustomers || []);
   };
 
   const filteredCustomers = customers.filter(customer => {
     const matchesSearch = customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          customer.phone.includes(searchTerm) ||
-                         (customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
+                         (customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+                         (customer.province_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+                         (customer.district_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+                         (customer.sub_district_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+                         (customer.address_detail?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
     const matchesFilter = filterType === 'all' || customer.customer_type === filterType;
     return matchesSearch && matchesFilter;
   });
 
   const handleAddCustomer = async () => {
-    if (!newCustomer.name || !newCustomer.phone) {
+    if (!newCustomer.name || !newCustomer.phone || !selectedProvinceId || !selectedDistrictId || !selectedSubDistrictId) {
       toast({
         title: "ข้อผิดพลาด",
-        description: "กรุณากรอกชื่อและเบอร์โทรศัพท์",
+        description: "กรุณากรอกชื่อ, เบอร์โทรศัพท์, จังหวัด, อำเภอ และตำบล",
         variant: "destructive"
       });
       return;
@@ -85,7 +196,10 @@ const CustomerManagement: React.FC = () => {
           name: newCustomer.name,
           phone: newCustomer.phone,
           email: newCustomer.email || null,
-          address: newCustomer.address || null,
+          address_detail: newCustomer.address_detail || null,
+          province_id: selectedProvinceId,
+          district_id: selectedDistrictId,
+          sub_district_id: selectedSubDistrictId,
           customer_type: 'regular'
         });
 
@@ -96,9 +210,14 @@ const CustomerManagement: React.FC = () => {
         description: "เพิ่มลูกค้าเรียบร้อย"
       });
       
-      setNewCustomer({ name: '', phone: '', email: '', address: '' });
+      // รีเซ็ตฟอร์ม
+      setNewCustomer({ name: '', phone: '', email: '', address_detail: '' });
+      setSelectedProvinceId(null);
+      setSelectedDistrictId(null);
+      setSelectedSubDistrictId(null);
+      
       setIsAddDialogOpen(false);
-      loadCustomers();
+      loadCustomers(); // โหลดข้อมูลลูกค้าใหม่
     } catch (error: any) {
       toast({
         title: "ข้อผิดพลาด",
@@ -174,16 +293,70 @@ const CustomerManagement: React.FC = () => {
                   placeholder="กรอกอีเมล"
                 />
               </div>
+
+              {/* Dropdown จังหวัด */}
               <div>
-                <Label htmlFor="customerAddress">ที่อยู่</Label>
+                <Label htmlFor="customerProvince">จังหวัด *</Label>
+                <Select onValueChange={(value) => setSelectedProvinceId(value)} value={selectedProvinceId || ''}>
+                  <SelectTrigger id="customerProvince">
+                    <SelectValue placeholder="เลือกจังหวัด" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {provinces.map(province => (
+                      <SelectItem key={province.id} value={province.id}>
+                        {province.name_th}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Dropdown อำเภอ/เขต */}
+              <div>
+                <Label htmlFor="customerDistrict">อำเภอ/เขต *</Label>
+                <Select onValueChange={(value) => setSelectedDistrictId(value)} value={selectedDistrictId || ''} disabled={!selectedProvinceId}>
+                  <SelectTrigger id="customerDistrict">
+                    <SelectValue placeholder={selectedProvinceId ? "เลือกอำเภอ/เขต" : "เลือกจังหวัดก่อน"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {districts.map(district => (
+                      <SelectItem key={district.id} value={district.id}>
+                        {district.name_th}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Dropdown ตำบล/แขวง */}
+              <div>
+                <Label htmlFor="customerSubDistrict">ตำบล/แขวง *</Label>
+                <Select onValueChange={(value) => setSelectedSubDistrictId(value)} value={selectedSubDistrictId || ''} disabled={!selectedDistrictId}>
+                  <SelectTrigger id="customerSubDistrict">
+                    <SelectValue placeholder={selectedDistrictId ? "เลือกตำบล/แขวง" : "เลือกอำเภอก่อน"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subDistricts.map(subDistrict => (
+                      <SelectItem key={subDistrict.id} value={subDistrict.id}>
+                        {subDistrict.name_th}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* ที่อยู่เพิ่มเติม */}
+              <div>
+                <Label htmlFor="customerAddressDetail">ที่อยู่เพิ่มเติม (บ้านเลขที่, ถนน, หมู่ ฯลฯ)</Label>
                 <Textarea
-                  id="customerAddress"
-                  value={newCustomer.address}
-                  onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })}
-                  placeholder="กรอกที่อยู่"
+                  id="customerAddressDetail"
+                  value={newCustomer.address_detail}
+                  onChange={(e) => setNewCustomer({ ...newCustomer, address_detail: e.target.value })}
+                  placeholder="กรอกบ้านเลขที่, ถนน, หมู่, รายละเอียดเพิ่มเติม"
                   rows={3}
                 />
               </div>
+
               <div className="flex justify-end space-x-2">
                 <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                   ยกเลิก
@@ -204,7 +377,7 @@ const CustomerManagement: React.FC = () => {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
               <Input
-                placeholder="ค้นหาลูกค้า (ชื่อ, เบอร์โทร, อีเมล)..."
+                placeholder="ค้นหาลูกค้า (ชื่อ, เบอร์โทร, อีเมล, ที่อยู่)..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -299,7 +472,16 @@ const CustomerManagement: React.FC = () => {
                       <div>
                         <p>📞 {customer.phone}</p>
                         <p>📧 {customer.email || 'ไม่ระบุ'}</p>
-                        <p>📍 {customer.address || 'ไม่ระบุ'}</p>
+                        {/* แสดงที่อยู่แบบใหม่ */}
+                        <p>
+                          📍 {customer.address_detail || ''}
+                          {(customer.sub_district_name || customer.district_name || customer.province_name) ? ', ' : ''}
+                          {customer.sub_district_name || ''}
+                          {customer.sub_district_name && (customer.district_name || customer.province_name) ? ', ' : ''}
+                          {customer.district_name || ''}
+                          {customer.district_name && customer.province_name ? ', ' : ''}
+                          {customer.province_name || 'ไม่ระบุ'}
+                        </p>
                       </div>
                       <div>
                         <p>💰 ยอดซื้อรวม: ฿{(customer.total_purchases || 0).toLocaleString()}</p>
