@@ -124,7 +124,7 @@ const CustomerManagement: React.FC = () => {
         setSelectedSubDistrictId(null); // รีเซ็ตตำบล
         return;
       }
-      const { data, error } = await supabase.from('sub_districts').select('id, name_th, district_id').eq('district_id', selectedDistrictId).order('name_th');
+      const { data, error } = await supabase.from('sub_districts').select('id, name_th, districts_id').eq('districts_id', selectedDistrictId).order('name_th');
       if (error) {
         console.error('Error loading sub-districts:', error);
         toast({ title: "ข้อผิดพลาด", description: "ไม่สามารถโหลดข้อมูลตำบลได้", variant: "destructive" });
