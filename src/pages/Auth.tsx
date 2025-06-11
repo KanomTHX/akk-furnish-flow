@@ -26,7 +26,7 @@ const Auth = () => {
     try {
       let result;
       if (isSignUp) {
-        result = await signUp(email, password, fullName, username);
+        result = await signUp(password, fullName, username);
       } else {
         result = await signIn(username, password);
       }
