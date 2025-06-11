@@ -3,14 +3,13 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { CreditCard, Plus, Search, Calendar, DollarSign } from 'lucide-react';
+import { CreditCard, Plus, DollarSign } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import CreateContractForm from './hire-purchase/CreateContractForm';
 
 interface Contract {
   id: string;
@@ -47,6 +46,7 @@ const HirePurchaseManagement: React.FC = () => {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
 
   useEffect(() => {
     loadContracts();
@@ -187,6 +187,13 @@ const HirePurchaseManagement: React.FC = () => {
           <CreditCard className="h-6 w-6 text-furniture-500" />
           <h2 className="text-2xl font-bold text-slate-900">ระบบเช่าซื้อ</h2>
         </div>
+        <Button 
+          onClick={() => setIsCreateFormOpen(true)}
+          className="bg-furniture-500 hover:bg-furniture-600"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          สร้างสัญญาใหม่
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -197,34 +204,38 @@ const HirePurchaseManagement: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4 max-h-96 overflow-y-auto">
-              {contracts.map((contract) => (
-                <div
-                  key={contract.id}
-                  className={`border rounded-lg p-4 cursor-pointer transition-colors ${
-                    selectedContract?.id === contract.id ? 'bg-furniture-50 border-furniture-300' : 'hover:bg-slate-50'
-                  }`}
-                  onClick={() => selectContract(contract)}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h3 className="font-medium">{contract.contract_number}</h3>
-                      <p className="text-sm text-slate-600">{contract.customer.name}</p>
-                      <p className="text-xs text-slate-500">{contract.customer.phone}</p>
+              {contracts.length === 0 ? (
+                <p className="text-center text-slate-500 py-8">ยังไม่มีสัญญาเช่าซื้อ</p>
+              ) : (
+                contracts.map((contract) => (
+                  <div
+                    key={contract.id}
+                    className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                      selectedContract?.id === contract.id ? 'bg-furniture-50 border-furniture-300' : 'hover:bg-slate-50'
+                    }`}
+                    onClick={() => selectContract(contract)}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h3 className="font-medium">{contract.contract_number}</h3>
+                        <p className="text-sm text-slate-600">{contract.customer.name}</p>
+                        <p className="text-xs text-slate-500">{contract.customer.phone}</p>
+                      </div>
+                      {getStatusBadge(contract.status)}
                     </div>
-                    {getStatusBadge(contract.status)}
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-slate-600">ยอดรวม: ฿{contract.total_amount.toLocaleString()}</p>
+                        <p className="text-slate-600">คงเหลือ: ฿{contract.remaining_amount.toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-600">งวดละ: ฿{contract.monthly_payment.toLocaleString()}</p>
+                        <p className="text-slate-600">วันทำสัญญา: {new Date(contract.contract_date).toLocaleDateString('th-TH')}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-slate-600">ยอดรวม: ฿{contract.total_amount.toLocaleString()}</p>
-                      <p className="text-slate-600">คงเหลือ: ฿{contract.remaining_amount.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-600">งวดละ: ฿{contract.monthly_payment.toLocaleString()}</p>
-                      <p className="text-slate-600">วันทำสัญญา: {new Date(contract.contract_date).toLocaleDateString('th-TH')}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </CardContent>
         </Card>
@@ -318,6 +329,12 @@ const HirePurchaseManagement: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      <CreateContractForm 
+        isOpen={isCreateFormOpen}
+        onClose={() => setIsCreateFormOpen(false)}
+        onContractCreated={loadContracts}
+      />
     </div>
   );
 };
