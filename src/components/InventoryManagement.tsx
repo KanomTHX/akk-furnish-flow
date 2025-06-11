@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,7 +24,7 @@ interface Product {
   brand?: string;
   model?: string;
   description?: string;
-  imageUrl?: string;
+  imageUrl?: string; // Added imageUrl to the interface
 }
 
 interface Movement {
@@ -55,7 +54,6 @@ const InventoryManagement: React.FC = () => {
   const [adjustmentType, setAdjustmentType] = useState('in');
   const [adjustmentNotes, setAdjustmentNotes] = useState('');
   const [newProduct, setNewProduct] = useState({
-  const [newProductImage, setNewProductImage] = useState<File | null>(null);
     name: '',
     code: '',
     category: '',
@@ -67,6 +65,7 @@ const InventoryManagement: React.FC = () => {
     model: '',
     description: ''
   });
+  const [newProductImage, setNewProductImage] = useState<File | null>(null);
 
   useEffect(() => {
     loadProducts();
@@ -111,21 +110,6 @@ const InventoryManagement: React.FC = () => {
     }
 
     try {
-      const { error } = await supabase
-        .from('products')
-        .insert({
-          name: newProduct.name,
-          code: newProduct.code,
-          category: newProduct.category,
-          price: parseFloat(newProduct.price),
-          cost: newProduct.cost ? parseFloat(newProduct.cost) : null,
-          stock_quantity: newProduct.stock_quantity ? parseInt(newProduct.stock_quantity) : 0,
-          min_stock_level: parseInt(newProduct.min_stock_level),
-          brand: newProduct.brand || null,
-          model: newProduct.model || null,
-          description: newProduct.description || null
-        });
-       try {
       let imageUrl: string | null = null;
 
       if (newProductImage) {
@@ -150,7 +134,8 @@ const InventoryManagement: React.FC = () => {
         
         imageUrl = publicUrlData?.publicUrl || null;
       }
- const { error } = await supabase
+
+      const { error } = await supabase
         .from('products')
         .insert({
           name: newProduct.name,
@@ -163,7 +148,7 @@ const InventoryManagement: React.FC = () => {
           brand: newProduct.brand || null,
           model: newProduct.model || null,
           description: newProduct.description || null,
-          image_url: imageUrl, // เพิ่มฟิลด์นี้ใน database table 'products'
+          imageUrl: imageUrl, // Use imageUrl as it's defined in the interface
         });
 
       if (error) throw error;
@@ -185,24 +170,6 @@ const InventoryManagement: React.FC = () => {
       });
     }
   };
-      if (error) throw error;
-
-      toast({ title: "สำเร็จ", description: "เพิ่มสินค้าเรียบร้อย" });
-      setIsAddProductOpen(false);
-      setNewProduct({
-        name: '', code: '', category: '', price: '', cost: '', stock_quantity: '',
-        min_stock_level: '5', brand: '', model: '', description: ''
-      });
-      loadProducts();
-
-    } catch (error: any) {
-      toast({ 
-        title: "ข้อผิดพลาด", 
-        description: error.message || "ไม่สามารถเพิ่มสินค้าได้", 
-        variant: "destructive" 
-      });
-    }
-  };
 
   const adjustStock = async () => {
     if (!selectedProduct || !adjustmentQuantity) {
@@ -212,6 +179,11 @@ const InventoryManagement: React.FC = () => {
 
     try {
       const quantity = parseInt(adjustmentQuantity);
+      if (isNaN(quantity) || quantity <= 0) {
+        toast({ title: "ข้อผิดพลาด", description: "กรุณาป้อนจำนวนที่ถูกต้อง", variant: "destructive" });
+        return;
+      }
+
       const movementQuantity = adjustmentType === 'in' ? quantity : -quantity;
       const newStockQuantity = selectedProduct.stock_quantity + movementQuantity;
 
@@ -377,6 +349,7 @@ const InventoryManagement: React.FC = () => {
                     placeholder="ชื่อสินค้า"
                   />
                 </div>
+                <div>
                    <Label>รูปภาพสินค้า (ไม่บังคับ)</Label>
                   <Input
                     type="file"
@@ -387,30 +360,6 @@ const InventoryManagement: React.FC = () => {
                     <p className="text-sm text-slate-500 mt-1">ไฟล์ที่เลือก: {newProductImage.name}</p>
                   )}
                 </div>
-                {/* ... rest of your input fields ... */}
-                <div className="col-span-2">
-                  <Button onClick={addProduct} className="w-full bg-furniture-500 hover:bg-furniture-600">
-                    เพิ่มสินค้า
-                  </Button>
-                  <div key={product.id} className="border rounded-lg p-4 flex items-center space-x-4">
-                    {product.imageUrl && ( // ตรวจสอบว่ามี imageUrl หรือไม่
-                      <img 
-                        src={product.imageUrl} 
-                        alt={product.name} 
-                        className="w-20 h-20 object-cover rounded-md" 
-                      />
-                    )}
-                    <div className="flex-1">
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex-1">
-                          <h3 className="font-medium">{product.name}</h3>
-                          <p className="text-sm text-slate-600">{product.code} • {product.category}</p>
-                          {product.brand && <p className="text-sm text-slate-600">{product.brand} {product.model}</p>}
-                        </div>
-                        {getStockStatus(product)}
-                      </div>
-                      {/* ... rest of product details ... */}
-                    </div>
                 <div>
                   <Label>รหัสสินค้า *</Label>
                   <Input
@@ -562,40 +511,49 @@ const InventoryManagement: React.FC = () => {
             <CardContent>
               <div className="space-y-4 max-h-96 overflow-y-auto">
                 {filteredProducts.map((product) => (
-                  <div key={product.id} className="border rounded-lg p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex-1">
-                        <h3 className="font-medium">{product.name}</h3>
-                        <p className="text-sm text-slate-600">{product.code} • {product.category}</p>
-                        {product.brand && <p className="text-sm text-slate-600">{product.brand} {product.model}</p>}
+                  <div key={product.id} className="border rounded-lg p-4 flex items-center space-x-4">
+                    {product.imageUrl && ( // Check if imageUrl exists
+                      <img 
+                        src={product.imageUrl} 
+                        alt={product.name} 
+                        className="w-20 h-20 object-cover rounded-md" 
+                      />
+                    )}
+                    <div className="flex-1">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex-1">
+                          <h3 className="font-medium">{product.name}</h3>
+                          <p className="text-sm text-slate-600">{product.code} • {product.category}</p>
+                          {product.brand && <p className="text-sm text-slate-600">{product.brand} {product.model}</p>}
+                        </div>
+                        {getStockStatus(product)}
                       </div>
-                      {getStockStatus(product)}
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <p className="text-slate-600">ราคาขาย</p>
-                        <p className="font-medium">฿{product.price.toLocaleString()}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-600">คงเหลือ</p>
-                        <p className="font-medium">{product.stock_quantity}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-600">ขั้นต่ำ</p>
-                        <p className="font-medium">{product.min_stock_level}</p>
-                      </div>
-                      <div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedProduct(product);
-                            setIsAdjustStockOpen(true);
-                          }}
-                        >
-                          <Edit className="h-4 w-4 mr-1" />
-                          ปรับสต็อก
-                        </Button>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <p className="text-slate-600">ราคาขาย</p>
+                          <p className="font-medium">฿{product.price.toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-600">คงเหลือ</p>
+                          <p className="font-medium">{product.stock_quantity}</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-600">ขั้นต่ำ</p>
+                          <p className="font-medium">{product.min_stock_level}</p>
+                        </div>
+                        <div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedProduct(product);
+                              setIsAdjustStockOpen(true);
+                            }}
+                          >
+                            <Edit className="h-4 w-4 mr-1" />
+                            ปรับสต็อก
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>
