@@ -17,7 +17,7 @@ const CustomerReportCard: React.FC<CustomerReportCardProps> = ({ customerReport 
           <CardTitle>รายงานลูกค้าสำคัญ</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-center text-slate-500 py-8">ไม่มีข้อมูลลูกค้าในช่วงเวลานี้</p>
+          <p className="text-center text-muted-foreground py-8">ไม่มีข้อมูลลูกค้าในช่วงเวลานี้</p>
         </CardContent>
       </Card>
     );
@@ -33,14 +33,14 @@ const CustomerReportCard: React.FC<CustomerReportCardProps> = ({ customerReport 
           {customerReport.slice(0, 10).map((item, index) => (
             <div key={index} className="flex justify-between items-center p-3 border rounded">
               <div>
-                <p className="font-medium">{item.customer_name}</p>
-                <p className="text-sm text-slate-600">{item.customer_phone}</p>
-                <p className="text-xs text-slate-500">
+                <p className="font-medium text-foreground">{item.customer_name}</p>
+                <p className="text-sm text-muted-foreground">{item.customer_phone}</p>
+                <p className="text-xs text-muted-foreground">
                   ซื้อล่าสุด: {new Date(item.last_purchase).toLocaleDateString('th-TH')}
                 </p>
               </div>
               <div className="text-right">
-                <p className="font-medium">{formatCurrency(item.total_purchases)}</p>
+                <p className="font-medium text-foreground">{formatCurrency(item.total_purchases)}</p>
                 <Badge variant="outline">ลูกค้าสำคัญ</Badge>
               </div>
             </div>
