@@ -25,6 +25,7 @@ interface Product {
   brand?: string;
   model?: string;
   description?: string;
+  imageUrl?: string;
 }
 
 interface Movement {
@@ -54,6 +55,7 @@ const InventoryManagement: React.FC = () => {
   const [adjustmentType, setAdjustmentType] = useState('in');
   const [adjustmentNotes, setAdjustmentNotes] = useState('');
   const [newProduct, setNewProduct] = useState({
+  const [newProductImage, setNewProductImage] = useState<File | null>(null);
     name: '',
     code: '',
     category: '',
@@ -123,7 +125,66 @@ const InventoryManagement: React.FC = () => {
           model: newProduct.model || null,
           description: newProduct.description || null
         });
+       try {
+      let imageUrl: string | null = null;
 
+      if (newProductImage) {
+        const fileExtension = newProductImage.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExtension}`;
+        const filePath = `product_images/${fileName}`;
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('furniture-images')
+          .upload(filePath, newProductImage, {
+            cacheControl: '3600',
+            upsert: false,
+          });
+
+        if (uploadError) {
+          throw new Error(`ไม่สามารถอัปโหลดรูปภาพได้: ${uploadError.message}`);
+        }
+
+        const { data: publicUrlData } = supabase.storage
+          .from('furniture-images')
+          .getPublicUrl(filePath);
+        
+        imageUrl = publicUrlData?.publicUrl || null;
+      }
+ const { error } = await supabase
+        .from('products')
+        .insert({
+          name: newProduct.name,
+          code: newProduct.code,
+          category: newProduct.category,
+          price: parseFloat(newProduct.price),
+          cost: newProduct.cost ? parseFloat(newProduct.cost) : null,
+          stock_quantity: newProduct.stock_quantity ? parseInt(newProduct.stock_quantity) : 0,
+          min_stock_level: parseInt(newProduct.min_stock_level),
+          brand: newProduct.brand || null,
+          model: newProduct.model || null,
+          description: newProduct.description || null,
+          image_url: imageUrl, // เพิ่มฟิลด์นี้ใน database table 'products'
+        });
+
+      if (error) throw error;
+
+      toast({ title: "สำเร็จ", description: "เพิ่มสินค้าเรียบร้อย" });
+      setIsAddProductOpen(false);
+      setNewProduct({
+        name: '', code: '', category: '', price: '', cost: '', stock_quantity: '',
+        min_stock_level: '5', brand: '', model: '', description: ''
+      });
+      setNewProductImage(null); // Reset file input
+      loadProducts();
+
+    } catch (error: any) {
+      toast({ 
+        title: "ข้อผิดพลาด", 
+        description: error.message || "ไม่สามารถเพิ่มสินค้าได้", 
+        variant: "destructive" 
+      });
+    }
+  };
       if (error) throw error;
 
       toast({ title: "สำเร็จ", description: "เพิ่มสินค้าเรียบร้อย" });
@@ -316,6 +377,40 @@ const InventoryManagement: React.FC = () => {
                     placeholder="ชื่อสินค้า"
                   />
                 </div>
+                   <Label>รูปภาพสินค้า (ไม่บังคับ)</Label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setNewProductImage(e.target.files ? e.target.files[0] : null)}
+                  />
+                  {newProductImage && (
+                    <p className="text-sm text-slate-500 mt-1">ไฟล์ที่เลือก: {newProductImage.name}</p>
+                  )}
+                </div>
+                {/* ... rest of your input fields ... */}
+                <div className="col-span-2">
+                  <Button onClick={addProduct} className="w-full bg-furniture-500 hover:bg-furniture-600">
+                    เพิ่มสินค้า
+                  </Button>
+                  <div key={product.id} className="border rounded-lg p-4 flex items-center space-x-4">
+                    {product.imageUrl && ( // ตรวจสอบว่ามี imageUrl หรือไม่
+                      <img 
+                        src={product.imageUrl} 
+                        alt={product.name} 
+                        className="w-20 h-20 object-cover rounded-md" 
+                      />
+                    )}
+                    <div className="flex-1">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex-1">
+                          <h3 className="font-medium">{product.name}</h3>
+                          <p className="text-sm text-slate-600">{product.code} • {product.category}</p>
+                          {product.brand && <p className="text-sm text-slate-600">{product.brand} {product.model}</p>}
+                        </div>
+                        {getStockStatus(product)}
+                      </div>
+                      {/* ... rest of product details ... */}
+                    </div>
                 <div>
                   <Label>รหัสสินค้า *</Label>
                   <Input
