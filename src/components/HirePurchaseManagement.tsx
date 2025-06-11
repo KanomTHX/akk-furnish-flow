@@ -87,6 +87,8 @@ const HirePurchaseManagement: React.FC = () => {
   const selectContract = (contract: Contract) => {
     setSelectedContract(contract);
     loadPayments(contract.id);
+    setPaymentAmount('');
+    setPaymentDetails('');
   };
 
   const processPayment = async (paymentId: string) => {
@@ -115,6 +117,7 @@ const HirePurchaseManagement: React.FC = () => {
           amount_paid: newAmountPaid,
           payment_date: new Date().toISOString().split('T')[0],
           payment_method: paymentMethod,
+          payment_details: paymentDetails,
           status: isFullyPaid ? 'paid' : 'partial',
           cashier_id: userProfile?.id
         })
@@ -140,6 +143,7 @@ const HirePurchaseManagement: React.FC = () => {
       });
 
       setPaymentAmount('');
+      setPaymentDetails('');
       loadPayments(selectedContract!.id);
       loadContracts();
 
