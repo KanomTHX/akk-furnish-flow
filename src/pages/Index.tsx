@@ -7,6 +7,8 @@ import CustomerManagement from '@/components/CustomerManagement';
 import CashSaleManagement from '@/components/CashSaleManagement';
 import HirePurchaseManagement from '@/components/HirePurchaseManagement';
 import InventoryManagement from '@/components/InventoryManagement';
+import ProductTransferManagement from '@/components/ProductTransferManagement';
+import BranchManagement from '@/components/BranchManagement';
 import AccountingManagement from '@/components/AccountingManagement';
 import ReportsManagement from '@/components/ReportsManagement';
 
@@ -27,6 +29,10 @@ const Index = () => {
         return <HirePurchaseManagement />;
       case 'inventory':
         return <InventoryManagement />;
+      case 'transfers':
+        return <ProductTransferManagement />;
+      case 'branches':
+        return <BranchManagement />;
       case 'accounting':
         return <AccountingManagement />;
       case 'reports':

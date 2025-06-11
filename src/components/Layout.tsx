@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Users, ShoppingCart, CreditCard, Package, FileText, BarChart3, Settings, Store, LogOut } from 'lucide-react';
+import { Users, ShoppingCart, CreditCard, Package, FileText, BarChart3, Settings, Store, LogOut, Building2, ArrowRightLeft } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -19,6 +19,8 @@ const tabs = [
   { id: 'sales', label: 'ขายสด', icon: ShoppingCart },
   { id: 'hire-purchase', label: 'เช่าซื้อ', icon: CreditCard },
   { id: 'inventory', label: 'คลังสินค้า', icon: Package },
+  { id: 'transfers', label: 'โอนสินค้า', icon: ArrowRightLeft },
+  { id: 'branches', label: 'สาขา', icon: Building2 },
   { id: 'accounting', label: 'บัญชี', icon: FileText },
   { id: 'reports', label: 'รายงาน', icon: BarChart3 },
 ];
@@ -39,7 +41,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
             <div className="flex items-center space-x-4">
               {/* Logo */}
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-furniture-500 to-furniture-700 rounded-lg flex items-center justify-center">
+                <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-700 rounded-lg flex items-center justify-center">
                   <Store className="h-6 w-6 text-white" />
                 </div>
                 <div>
@@ -52,7 +54,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
             <div className="flex items-center space-x-4">
               <div className="text-sm text-black">
                 ยินดีต้อนรับ, <span className="font-medium text-black">{userProfile?.full_name}</span>
-                <div className="text-xs text-furniture-600">
+                <div className="text-xs text-red-600">
                   {userProfile?.role === 'admin' && 'แอดมิน'}
                   {userProfile?.role === 'sales' && 'พนักงานขาย'}
                   {userProfile?.role === 'cashier' && 'พนักงานเก็บเงิน'}
@@ -88,7 +90,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
                   className={cn(
                     "flex items-center space-x-2 py-4 px-2 border-b-2 font-medium text-sm whitespace-nowrap transition-colors",
                     activeTab === tab.id
-                      ? "border-furniture-500 text-furniture-600"
+                      ? "border-red-500 text-red-600"
                       : "border-transparent text-black hover:text-black hover:border-slate-300"
                   )}
                 >

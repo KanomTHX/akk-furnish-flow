@@ -9,6 +9,44 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      branches: {
+        Row: {
+          address: string | null
+          created_at: string | null
+          id: string
+          manager_id: string | null
+          name: string
+          phone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string | null
+          id?: string
+          manager_id?: string | null
+          name: string
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          address?: string | null
+          created_at?: string | null
+          id?: string
+          manager_id?: string | null
+          name?: string
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "branches_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cash_sale_items: {
         Row: {
           cash_sale_id: string | null
@@ -165,6 +203,100 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      expense_categories: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      expenses: {
+        Row: {
+          amount: number
+          approved_by: string | null
+          category_id: string
+          created_at: string | null
+          created_by: string | null
+          description: string
+          expense_date: string
+          id: string
+          receipt_number: string | null
+          status: string
+          updated_at: string | null
+          vendor_name: string | null
+        }
+        Insert: {
+          amount: number
+          approved_by?: string | null
+          category_id: string
+          created_at?: string | null
+          created_by?: string | null
+          description: string
+          expense_date?: string
+          id?: string
+          receipt_number?: string | null
+          status?: string
+          updated_at?: string | null
+          vendor_name?: string | null
+        }
+        Update: {
+          amount?: number
+          approved_by?: string | null
+          category_id?: string
+          created_at?: string | null
+          created_by?: string | null
+          description?: string
+          expense_date?: string
+          id?: string
+          receipt_number?: string | null
+          status?: string
+          updated_at?: string | null
+          vendor_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       hire_purchase_contracts: {
         Row: {
@@ -413,8 +545,158 @@ export type Database = {
           },
         ]
       }
+      product_history: {
+        Row: {
+          action_date: string | null
+          action_type: string
+          created_at: string | null
+          from_branch_id: string | null
+          id: string
+          notes: string | null
+          performed_by: string | null
+          product_id: string
+          reference_id: string | null
+          serial_number: string
+          to_branch_id: string | null
+        }
+        Insert: {
+          action_date?: string | null
+          action_type: string
+          created_at?: string | null
+          from_branch_id?: string | null
+          id?: string
+          notes?: string | null
+          performed_by?: string | null
+          product_id: string
+          reference_id?: string | null
+          serial_number: string
+          to_branch_id?: string | null
+        }
+        Update: {
+          action_date?: string | null
+          action_type?: string
+          created_at?: string | null
+          from_branch_id?: string | null
+          id?: string
+          notes?: string | null
+          performed_by?: string | null
+          product_id?: string
+          reference_id?: string | null
+          serial_number?: string
+          to_branch_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_history_from_branch_id_fkey"
+            columns: ["from_branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_history_performed_by_fkey"
+            columns: ["performed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_history_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_history_to_branch_id_fkey"
+            columns: ["to_branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_transfers: {
+        Row: {
+          created_at: string | null
+          from_branch_id: string | null
+          id: string
+          notes: string | null
+          product_id: string
+          received_by: string | null
+          status: string
+          to_branch_id: string
+          transfer_date: string | null
+          transferred_by: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          from_branch_id?: string | null
+          id?: string
+          notes?: string | null
+          product_id: string
+          received_by?: string | null
+          status?: string
+          to_branch_id: string
+          transfer_date?: string | null
+          transferred_by?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          from_branch_id?: string | null
+          id?: string
+          notes?: string | null
+          product_id?: string
+          received_by?: string | null
+          status?: string
+          to_branch_id?: string
+          transfer_date?: string | null
+          transferred_by?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_transfers_from_branch_id_fkey"
+            columns: ["from_branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_transfers_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_transfers_received_by_fkey"
+            columns: ["received_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_transfers_to_branch_id_fkey"
+            columns: ["to_branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_transfers_transferred_by_fkey"
+            columns: ["transferred_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
+          branch_id: string | null
           brand: string | null
           category: string
           code: string
@@ -422,15 +704,18 @@ export type Database = {
           created_at: string | null
           description: string | null
           id: string
+          image_url: string | null
           min_stock_level: number | null
           model: string | null
           name: string
           price: number
+          serial_number: string
           stock_quantity: number | null
           updated_at: string | null
           warranty_months: number | null
         }
         Insert: {
+          branch_id?: string | null
           brand?: string | null
           category: string
           code: string
@@ -438,15 +723,18 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           id?: string
+          image_url?: string | null
           min_stock_level?: number | null
           model?: string | null
           name: string
           price: number
+          serial_number?: string
           stock_quantity?: number | null
           updated_at?: string | null
           warranty_months?: number | null
         }
         Update: {
+          branch_id?: string | null
           brand?: string | null
           category?: string
           code?: string
@@ -454,15 +742,25 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           id?: string
+          image_url?: string | null
           min_stock_level?: number | null
           model?: string | null
           name?: string
           price?: number
+          serial_number?: string
           stock_quantity?: number | null
           updated_at?: string | null
           warranty_months?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -473,6 +771,7 @@ export type Database = {
           phone: string | null
           role: string
           updated_at: string | null
+          username: string | null
         }
         Insert: {
           created_at?: string | null
@@ -482,6 +781,7 @@ export type Database = {
           phone?: string | null
           role: string
           updated_at?: string | null
+          username?: string | null
         }
         Update: {
           created_at?: string | null
@@ -491,6 +791,7 @@ export type Database = {
           phone?: string | null
           role?: string
           updated_at?: string | null
+          username?: string | null
         }
         Relationships: []
       }

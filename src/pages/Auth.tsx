@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 
 const Auth = () => {
   const [isSignUp, setIsSignUp] = useState(false);
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -25,9 +26,9 @@ const Auth = () => {
     try {
       let result;
       if (isSignUp) {
-        result = await signUp(email, password, fullName);
+        result = await signUp(email, password, fullName, username);
       } else {
-        result = await signIn(email, password);
+        result = await signIn(username, password);
       }
 
       if (result.error) {
@@ -61,7 +62,7 @@ const Auth = () => {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-furniture-500 to-furniture-700 rounded-lg flex items-center justify-center">
+            <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-red-700 rounded-lg flex items-center justify-center">
               <Store className="h-7 w-7 text-white" />
             </div>
           </div>
@@ -75,29 +76,43 @@ const Auth = () => {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {isSignUp && (
-              <div>
-                <label className="block text-sm font-medium text-black mb-1">
-                  ชื่อ-นามสกุล
-                </label>
-                <Input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  required
-                  placeholder="กรอกชื่อ-นามสกุล"
-                />
-              </div>
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-black mb-1">
+                    ชื่อ-นามสกุล
+                  </label>
+                  <Input
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                    placeholder="กรอกชื่อ-นามสกุล"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-black mb-1">
+                    อีเมล
+                  </label>
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    placeholder="กรอกอีเมล"
+                  />
+                </div>
+              </>
             )}
             <div>
               <label className="block text-sm font-medium text-black mb-1">
-                อีเมล
+                ชื่อผู้ใช้
               </label>
               <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 required
-                placeholder="กรอกอีเมล"
+                placeholder="กรอกชื่อผู้ใช้"
               />
             </div>
             <div>
@@ -115,7 +130,7 @@ const Auth = () => {
             </div>
             <Button
               type="submit"
-              className="w-full"
+              className="w-full bg-red-600 hover:bg-red-700"
               disabled={loading}
             >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -126,7 +141,7 @@ const Auth = () => {
             <button
               type="button"
               onClick={() => setIsSignUp(!isSignUp)}
-              className="text-sm text-furniture-600 hover:text-furniture-700"
+              className="text-sm text-red-600 hover:text-red-700"
             >
               {isSignUp ? 'มีบัญชีแล้ว? เข้าสู่ระบบ' : 'ยังไม่มีบัญชี? สมัครสมาชิก'}
             </button>
