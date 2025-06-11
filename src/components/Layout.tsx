@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // เพิ่ม useEffect
 import { Users, ShoppingCart, CreditCard, Package, FileText, BarChart3, Settings, Store, LogOut, Building2, ArrowRightLeft } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,90 +26,62 @@ const tabs = [
 
 const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => {
   const { userProfile, signOut } = useAuth();
+  const [currentDateTime, setCurrentDateTime] = useState(new Date()); // เพิ่ม state สำหรับเวลาและวันที่
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentDateTime(new Date()); // อัปเดตเวลาทุกวินาที
+    }, 1000);
+
+    return () => {
+      clearInterval(timer); // เคลียร์ timer เมื่อ component ถูก unmount
+    };
+  }, []); // [] เพื่อให้ useEffect ทำงานแค่ครั้งเดียวตอน mount
 
   const handleSignOut = async () => {
     await signOut();
   };
 
+  // ฟังก์ชันสำหรับฟอร์แมตวันที่และเวลา
+  const formatDateTime = (date: Date) => {
+    const options: Intl.DateTimeFormatOptions = {
+      weekday: 'long', // วันในสัปดาห์ เช่น วันพุธ
+      year: 'numeric', // ปี เช่น 2025
+      month: 'long',   // เดือน เช่น มิถุนายน
+      day: 'numeric',  // วันที่ เช่น 11
+      hour: '2-digit', // ชั่วโมง เช่น 04 PM
+      minute: '2-digit', // นาที เช่น 19
+      second: '2-digit', // วินาที เช่น 24
+      hour12: false, // ใช้รูปแบบ 24 ชั่วโมง
+      timeZone: 'Asia/Bangkok' // ตั้งค่า Time Zone เป็นประเทศไทย
+    };
+    return date.toLocaleDateString('th-TH', options); // ใช้ 'th-TH' สำหรับภาษาไทย
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-neutral-100">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 shadow-sm">
+      <header className="bg-white border-b border-neutral-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
               {/* Logo */}
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-700 rounded-lg flex items-center justify-center">
+                <div className="w-10 h-10 bg-gradient-to-br from-gray-700 to-gray-900 rounded-lg flex items-center justify-center">
                   <Store className="h-6 w-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold text-black">AKK Sell and Service</h1>
-                  <p className="text-sm text-black">ระบบขายและเช่าซื้อเฟอร์นิเจอร์</p>
+                  <h1 className="text-xl font-bold text-gray-900">AKK Sell and Service</h1>
+                  <p className="text-sm text-gray-700">ระบบขายและเช่าซื้อเฟอร์นิเจอร์</p>
                 </div>
               </div>
             </div>
             
             <div className="flex items-center space-x-4">
-              <div className="text-sm text-black">
-                ยินดีต้อนรับ, <span className="font-medium text-black">{userProfile?.full_name}</span>
-                <div className="text-xs text-red-600">
+              <div className="text-sm text-gray-800">
+                ยินดีต้อนรับ, <span className="font-medium text-gray-900">{userProfile?.full_name}</span>
+                <div className="text-xs text-gray-600">
                   {userProfile?.role === 'admin' && 'แอดมิน'}
                   {userProfile?.role === 'sales' && 'พนักงานขาย'}
                   {userProfile?.role === 'cashier' && 'พนักงานเก็บเงิน'}
-                  {userProfile?.role === 'credit' && 'ฝ่ายสินเชื่อ'}
-                  {userProfile?.role === 'warehouse' && 'ฝ่ายคลังสินค้า'}
-                  {userProfile?.role === 'manager' && 'ผู้บริหาร'}
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleSignOut}
-                className="text-black hover:text-black"
-              >
-                <LogOut className="h-4 w-4 mr-2" />
-                ออกจากระบบ
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Navigation Tabs */}
-      <nav className="bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-8 overflow-x-auto">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => onTabChange(tab.id)}
-                  className={cn(
-                    "flex items-center space-x-2 py-4 px-2 border-b-2 font-medium text-sm whitespace-nowrap transition-colors",
-                    activeTab === tab.id
-                      ? "border-red-500 text-red-600"
-                      : "border-transparent text-black hover:text-black hover:border-slate-300"
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="animate-fade-in">
-          {children}
-        </div>
-      </main>
-    </div>
-  );
-};
-
-export default Layout;
+                  {userProfile?.role ===
