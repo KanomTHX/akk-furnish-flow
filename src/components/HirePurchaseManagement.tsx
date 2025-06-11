@@ -35,6 +35,7 @@ interface Payment {
   amount_paid: number;
   status: string;
   payment_date?: string;
+  payment_details?: string;
 }
 
 const HirePurchaseManagement: React.FC = () => {
