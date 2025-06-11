@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'; // เพิ่ม useEffect
+import React, { useState, useEffect } from 'react';
 import { Users, ShoppingCart, CreditCard, Package, FileText, BarChart3, Settings, Store, LogOut, Building2, ArrowRightLeft } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -26,36 +26,35 @@ const tabs = [
 
 const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => {
   const { userProfile, signOut } = useAuth();
-  const [currentDateTime, setCurrentDateTime] = useState(new Date()); // เพิ่ม state สำหรับเวลาและวันที่
+  const [currentDateTime, setCurrentDateTime] = useState(new Date());
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentDateTime(new Date()); // อัปเดตเวลาทุกวินาที
+      setCurrentDateTime(new Date());
     }, 1000);
 
     return () => {
-      clearInterval(timer); // เคลียร์ timer เมื่อ component ถูก unmount
+      clearInterval(timer);
     };
-  }, []); // [] เพื่อให้ useEffect ทำงานแค่ครั้งเดียวตอน mount
+  }, []);
 
   const handleSignOut = async () => {
     await signOut();
   };
 
-  // ฟังก์ชันสำหรับฟอร์แมตวันที่และเวลา
   const formatDateTime = (date: Date) => {
     const options: Intl.DateTimeFormatOptions = {
-      weekday: 'long', // วันในสัปดาห์ เช่น วันพุธ
-      year: 'numeric', // ปี เช่น 2025
-      month: 'long',   // เดือน เช่น มิถุนายน
-      day: 'numeric',  // วันที่ เช่น 11
-      hour: '2-digit', // ชั่วโมง เช่น 04 PM
-      minute: '2-digit', // นาที เช่น 19
-      second: '2-digit', // วินาที เช่น 24
-      hour12: false, // ใช้รูปแบบ 24 ชั่วโมง
-      timeZone: 'Asia/Bangkok' // ตั้งค่า Time Zone เป็นประเทศไทย
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      timeZone: 'Asia/Bangkok'
     };
-    return date.toLocaleDateString('th-TH', options); // ใช้ 'th-TH' สำหรับภาษาไทย
+    return date.toLocaleDateString('th-TH', options);
   };
 
   return (
@@ -76,7 +75,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
                 </div>
               </div>
             </div>
-            
+
             <div className="flex items-center space-x-4">
               <div className="text-sm text-gray-800">
                 ยินดีต้อนรับ, <span className="font-medium text-gray-900">{userProfile?.full_name}</span>
@@ -84,4 +83,70 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
                   {userProfile?.role === 'admin' && 'แอดมิน'}
                   {userProfile?.role === 'sales' && 'พนักงานขาย'}
                   {userProfile?.role === 'cashier' && 'พนักงานเก็บเงิน'}
-                  {userProfile?.role ===
+                  {userProfile?.role === 'manager' && 'ผู้จัดการ'} {/* <-- เพิ่มส่วนนี้ให้สมบูรณ์ */}
+                  {/* เพิ่มบทบาทอื่นๆ ที่นี่ตามต้องการ */}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-gray-700">{formatDateTime(currentDateTime)}</div>
+                <div className="text-xs text-gray-500">
+                  <span className="font-medium">สาขา:</span> {userProfile?.branch_name || 'ไม่ระบุ'}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                onClick={() => onTabChange('settings')}
+              >
+                <Settings className="h-5 w-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-red-500 hover:text-red-700 hover:bg-red-100"
+                onClick={handleSignOut}
+              >
+                <LogOut className="h-5 w-5" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content Area */}
+      <div className="flex flex-col lg:flex-row max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 gap-6">
+        {/* Sidebar Navigation */}
+        <nav className="w-full lg:w-64 flex-shrink-0">
+          <Card className="p-4 flex flex-col space-y-2">
+            {tabs.map((tab) => (
+              <Button
+                key={tab.id}
+                variant="ghost"
+                className={cn(
+                  "justify-start px-4 py-2 text-base font-medium rounded-md transition-colors duration-200",
+                  activeTab === tab.id
+                    ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md hover:from-blue-600 hover:to-blue-700"
+                    : "text-gray-700 hover:bg-gray-200 hover:text-gray-900"
+                )}
+                onClick={() => onTabChange(tab.id)}
+              >
+                <tab.icon className={cn("mr-3 h-5 w-5", activeTab === tab.id ? "text-white" : "text-gray-500")} />
+                {tab.label}
+              </Button>
+            ))}
+          </Card>
+        </nav>
+
+        {/* Page Content */}
+        <main className="flex-1 min-w-0">
+          <Card className="p-6 h-full">
+            {children}
+          </Card>
+        </main>
+      </div>
+    </div>
+  );
+};
+
+export default Layout;
