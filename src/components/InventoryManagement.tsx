@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,7 +22,7 @@ interface Product {
   code: string;
   category: string;
   price: number;
-  cost?: number;
+  cost?: number; // <--- **(สำคัญ)** ตรวจสอบว่ามีฟิลด์นี้
   stock_quantity: number;
   min_stock_level: number;
   brand?: string;
@@ -51,11 +51,11 @@ const InventoryManagement: React.FC = () => {
   const [movements, setMovements] = useState<Movement[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
-  const [isAddProductOpen, setIsAddProductOpen] = useState(false);
+  const [isReceiveProductOpen, setIsReceiveProductOpen] = useState(false); // <--- **(เปลี่ยนชื่อ)**
   const [isAdjustStockOpen, setIsAdjustStockOpen] = useState(false);
-  const [isEditProductOpen, setIsEditProductOpen] = useState(false); // สถานะใหม่สำหรับ dialog แก้ไข
+  const [isEditProductOpen, setIsEditProductOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null); // สถานะใหม่สำหรับสินค้าที่กำลังแก้ไข
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [adjustmentQuantity, setAdjustmentQuantity] = useState('');
   const [adjustmentType, setAdjustmentType] = useState('in');
   const [adjustmentNotes, setAdjustmentNotes] = useState('');
@@ -64,16 +64,16 @@ const InventoryManagement: React.FC = () => {
     code: '',
     category: '',
     price: '',
-    cost: '',
-    stock_quantity: '',
+    cost: '', // <--- **(สำคัญ)** เพิ่มฟิลด์ cost
+    received_quantity: '', // <--- **(เปลี่ยนชื่อ)** สำหรับจำนวนที่รับเข้า
     min_stock_level: '5',
     brand: '',
     model: '',
     description: ''
   });
   const [newProductImage, setNewProductImage] = useState<File | null>(null);
-  const [editingProductImage, setEditingProductImage] = useState<File | null>(null); // สถานะใหม่สำหรับรูปภาพสินค้าที่กำลังแก้ไข
-  const [exportPeriod, setExportPeriod] = useState('1month'); // สถานะใหม่สำหรับช่วงเวลาการส่งออก
+  const [editingProductImage, setEditingProductImage] = useState<File | null>(null);
+  const [exportPeriod, setExportPeriod] = useState('1month');
 
   useEffect(() => {
     loadProducts();
@@ -113,10 +113,10 @@ const InventoryManagement: React.FC = () => {
     setMovements(data || []);
   };
 
-  // เพิ่มสินค้าใหม่
-  const addProduct = async () => {
-    if (!newProduct.name || !newProduct.code || !newProduct.category || !newProduct.price) {
-      toast({ title: "ข้อผิดพลาด", description: "กรุณากรอกข้อมูลที่จำเป็น", variant: "destructive" });
+  // รับสินค้าเข้า (เปลี่ยนชื่อจาก addProduct)
+  const receiveProduct = async () => { // <--- **(เปลี่ยนชื่อฟังก์ชัน)**
+    if (!newProduct.name || !newProduct.code || !newProduct.category || !newProduct.price || !newProduct.cost || !newProduct.received_quantity) { // <--- **(เพิ่ม cost และ received_quantity)**
+      toast({ title: "ข้อผิดพลาด", description: "กรุณากรอกข้อมูลที่จำเป็นทั้งหมด", variant: "destructive" });
       return;
     }
 
@@ -146,37 +146,117 @@ const InventoryManagement: React.FC = () => {
         imageUrl = publicUrlData?.publicUrl || null;
       }
 
-      const { error } = await supabase
+      const parsedPrice = parseFloat(newProduct.price);
+      const parsedCost = parseFloat(newProduct.cost); // <--- **(สำคัญ)** parse cost
+      const parsedReceivedQuantity = parseInt(newProduct.received_quantity); // <--- **(สำคัญ)** parse received quantity
+
+      // 1. เพิ่มหรืออัปเดตสินค้าในตาราง products
+      const { data: existingProduct, error: fetchError } = await supabase
         .from('products')
+        .select('id, stock_quantity')
+        .eq('code', newProduct.code)
+        .single();
+
+      let productId = null;
+      let newStockAfterReceive = parsedReceivedQuantity;
+
+      if (fetchError && fetchError.code === 'PGRST116') { // No rows found
+        // สินค้าใหม่: insert
+        const { data: insertedProduct, error: insertError } = await supabase
+          .from('products')
+          .insert({
+            name: newProduct.name,
+            code: newProduct.code,
+            category: newProduct.category,
+            price: parsedPrice,
+            cost: parsedCost, // <--- **(สำคัญ)** บันทึก cost
+            stock_quantity: parsedReceivedQuantity, // สต็อกเริ่มต้นคือจำนวนที่รับเข้า
+            min_stock_level: parseInt(newProduct.min_stock_level),
+            brand: newProduct.brand || null,
+            model: newProduct.model || null,
+            description: newProduct.description || null,
+            imageUrl: imageUrl,
+            created_by: userProfile?.id // บันทึกผู้สร้างสินค้า
+          })
+          .select('id')
+          .single();
+        
+        if (insertError) throw insertError;
+        productId = insertedProduct.id;
+      } else if (existingProduct) {
+        // สินค้ามีอยู่แล้ว: update stock_quantity
+        newStockAfterReceive = existingProduct.stock_quantity + parsedReceivedQuantity;
+        const { error: updateError } = await supabase
+          .from('products')
+          .update({
+            stock_quantity: newStockAfterReceive,
+            name: newProduct.name, // อนุญาตให้อัปเดตข้อมูลอื่น ๆ ด้วย
+            category: newProduct.category,
+            price: parsedPrice,
+            cost: parsedCost,
+            min_stock_level: parseInt(newProduct.min_stock_level),
+            brand: newProduct.brand || null,
+            model: newProduct.model || null,
+            description: newProduct.description || null,
+            // ไม่อัปเดต imageUrl หากไม่มีการเลือกไฟล์ใหม่
+            ...(imageUrl && { imageUrl: imageUrl })
+          })
+          .eq('id', existingProduct.id);
+        
+        if (updateError) throw updateError;
+        productId = existingProduct.id;
+      } else if (fetchError) {
+        throw fetchError;
+      }
+
+      if (!productId) {
+        throw new Error("ไม่สามารถระบุ ID สินค้าได้");
+      }
+
+      // 2. บันทึกการเคลื่อนไหวของสินค้า
+      const { error: movementError } = await supabase
+        .from('inventory_movements')
         .insert({
-          name: newProduct.name,
-          code: newProduct.code,
-          category: newProduct.category,
-          price: parseFloat(newProduct.price),
-          cost: newProduct.cost ? parseFloat(newProduct.cost) : null,
-          stock_quantity: newProduct.stock_quantity ? parseInt(newProduct.stock_quantity) : 0,
-          min_stock_level: parseInt(newProduct.min_stock_level),
-          brand: newProduct.brand || null,
-          model: newProduct.model || null,
-          description: newProduct.description || null,
-          imageUrl: imageUrl,
+          product_id: productId,
+          movement_type: 'in', // ประเภท 'in' สำหรับการรับสินค้าเข้า
+          quantity: parsedReceivedQuantity,
+          reference_type: 'product_receipt', // ประเภทอ้างอิง: การรับสินค้า
+          notes: `รับสินค้าเข้า: ${newProduct.description || newProduct.name}`,
+          created_by: userProfile?.id
         });
 
-      if (error) throw error;
+      if (movementError) throw movementError;
 
-      toast({ title: "สำเร็จ", description: "เพิ่มสินค้าเรียบร้อย" });
-      setIsAddProductOpen(false);
+      // 3. บันทึกค่าใช้จ่ายในตาราง branch_expenses
+      const totalCost = parsedCost * parsedReceivedQuantity;
+      if (totalCost > 0) {
+        const { error: expenseError } = await supabase
+          .from('branch_expenses')
+          .insert({
+            amount: totalCost,
+            description: `ต้นทุนสินค้า: ${newProduct.name} (${newProduct.code}) จำนวน ${parsedReceivedQuantity} หน่วย`,
+            category: 'ต้นทุนสินค้า', // <--- **(สำคัญ)** หมวดหมู่ใหม่
+            expense_date: new Date().toISOString().split('T')[0],
+            created_by: userProfile?.id
+          });
+
+        if (expenseError) throw expenseError;
+      }
+
+      toast({ title: "สำเร็จ", description: "รับสินค้าเข้าและบันทึกค่าใช้จ่ายเรียบร้อย" });
+      setIsReceiveProductOpen(false); // <--- **(เปลี่ยนชื่อ)**
       setNewProduct({
-        name: '', code: '', category: '', price: '', cost: '', stock_quantity: '',
+        name: '', code: '', category: '', price: '', cost: '', received_quantity: '', // <--- **(รีเซ็ตค่า)**
         min_stock_level: '5', brand: '', model: '', description: ''
       });
       setNewProductImage(null);
       loadProducts();
+      loadMovements();
 
     } catch (error: any) {
       toast({ 
         title: "ข้อผิดพลาด", 
-        description: error.message || "ไม่สามารถเพิ่มสินค้าได้", 
+        description: error.message || "ไม่สามารถรับสินค้าเข้าได้", 
         variant: "destructive" 
       });
     }
@@ -232,7 +312,7 @@ const InventoryManagement: React.FC = () => {
           code: editingProduct.code,
           category: editingProduct.category,
           price: editingProduct.price,
-          cost: editingProduct.cost || null,
+          cost: editingProduct.cost || null, // <--- **(สำคัญ)** บันทึก cost
           stock_quantity: editingProduct.stock_quantity,
           min_stock_level: editingProduct.min_stock_level,
           brand: editingProduct.brand || null,
@@ -544,17 +624,17 @@ const InventoryManagement: React.FC = () => {
             </DialogContent>
           </Dialog>
 
-          {/* ส่วน Dialog เพิ่มสินค้าที่มีอยู่แล้ว */}
-          <Dialog open={isAddProductOpen} onOpenChange={setIsAddProductOpen}>
+          {/* ส่วน Dialog "รับสินค้าเข้า" (เปลี่ยนชื่อจาก เพิ่มสินค้า) */}
+          <Dialog open={isReceiveProductOpen} onOpenChange={setIsReceiveProductOpen}> {/* <--- **(เปลี่ยนชื่อ)** */}
             <DialogTrigger asChild>
               <Button className="bg-furniture-500 hover:bg-furniture-600">
                 <Plus className="h-4 w-4 mr-2" />
-                เพิ่มสินค้า
+                รับสินค้าเข้า {/* <--- **(เปลี่ยนข้อความปุ่ม)** */}
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl">
               <DialogHeader>
-                <DialogTitle>เพิ่มสินค้าใหม่</DialogTitle>
+                <DialogTitle>รับสินค้าเข้าคลัง</DialogTitle> {/* <--- **(เปลี่ยนข้อความ title)** */}
               </DialogHeader>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -602,7 +682,7 @@ const InventoryManagement: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <Label>ราคาต้นทุน</Label>
+                  <Label>ราคาต้นทุน *</Label> {/* <--- **(สำคัญ)** เพิ่ม label และทำให้เป็น required */}
                   <Input
                     type="number"
                     value={newProduct.cost}
@@ -611,12 +691,12 @@ const InventoryManagement: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <Label>จำนวนเริ่มต้น</Label>
+                  <Label>จำนวนที่รับเข้า *</Label> {/* <--- **(สำคัญ)** เปลี่ยน label และทำให้เป็น required */}
                   <Input
                     type="number"
-                    value={newProduct.stock_quantity}
-                    onChange={(e) => setNewProduct({ ...newProduct, stock_quantity: e.target.value })}
-                    placeholder="จำนวนเริ่มต้น"
+                    value={newProduct.received_quantity}
+                    onChange={(e) => setNewProduct({ ...newProduct, received_quantity: e.target.value })}
+                    placeholder="จำนวนที่รับเข้า"
                   />
                 </div>
                 <div>
@@ -653,8 +733,8 @@ const InventoryManagement: React.FC = () => {
                   />
                 </div>
                 <div className="col-span-2">
-                  <Button onClick={addProduct} className="w-full bg-furniture-500 hover:bg-furniture-600">
-                    เพิ่มสินค้า
+                  <Button onClick={receiveProduct} className="w-full bg-furniture-500 hover:bg-furniture-600"> {/* <--- **(เปลี่ยน onClick)** */}
+                    บันทึกการรับสินค้า {/* <--- **(เปลี่ยนข้อความปุ่ม)** */}
                   </Button>
                 </div>
               </div>
@@ -756,6 +836,13 @@ const InventoryManagement: React.FC = () => {
                           <p className="text-slate-600">ราคาขาย</p>
                           <p className="font-medium">฿{product.price.toLocaleString()}</p>
                         </div>
+                        {/* แสดงราคาต้นทุน */}
+                        {product.cost !== undefined && (
+                          <div>
+                            <p className="text-slate-600">ราคาต้นทุน</p>
+                            <p className="font-medium">฿{product.cost.toLocaleString()}</p>
+                          </div>
+                        )}
                         <div>
                           <p className="text-slate-600">คงเหลือ</p>
                           <p className="font-medium">{product.stock_quantity}</p>
@@ -928,7 +1015,7 @@ const InventoryManagement: React.FC = () => {
                     <SelectItem value="3months">3 เดือน</SelectItem>
                     <SelectItem value="6months">6 เดือน</SelectItem>
                     <SelectItem value="1year">1 ปี</SelectItem>
-                    <SelectItem value="all">ทั้งหมด</SelectItem> {/* เพิ่มตัวเลือก "ทั้งหมด" */}
+                    <SelectItem value="all">ทั้งหมด</SelectItem>
                   </SelectContent>
                 </Select>
                 {/* ปุ่ม Export CSV */}
