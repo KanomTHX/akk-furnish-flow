@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,8 +31,13 @@ const ReportsManagement: React.FC = () => {
       try {
         console.log('Loading data for report:', selectedReport, 'period:', selectedPeriod);
         const { start, end } = getDateRange(selectedPeriod);
-        console.log('Date range:', start, 'to', end);
-        await loadReportData(selectedReport, start, end);
+        
+        // Format dates to ISO 8601 strings
+        const formattedStart = start.toISOString();
+        const formattedEnd = end.toISOString();
+
+        console.log('Date range (ISO):', formattedStart, 'to', formattedEnd);
+        await loadReportData(selectedReport, formattedStart, formattedEnd);
       } catch (error: any) {
         console.error('Error loading report data:', error);
         toast({
