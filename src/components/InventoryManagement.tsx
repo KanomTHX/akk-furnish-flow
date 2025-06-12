@@ -7,14 +7,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Package, Plus, Search, Edit, AlertTriangle, TrendingUp, TrendingDown, Download, Trash2 } from 'lucide-react';
+import {
+  Package,
+  Plus,
+  Search,
+  Edit,
+  AlertTriangle,
+  TrendingUp,
+  TrendingDown,
+  Download,
+  Trash2,
+  PlusCircle,
+  MinusCircle
+} from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import Papa from 'papaparse'; // ต้องติดตั้ง papaparse เพิ่มเติม
-
-// ตรวจสอบให้แน่ใจว่าได้ติดตั้ง papaparse แล้ว:
-// npm install papaparse
+import Papa from 'papaparse';
 
 interface Product {
   id: string;
@@ -22,333 +31,383 @@ interface Product {
   code: string;
   category: string;
   price: number;
-  cost?: number; // <--- **(สำคัญ)** ตรวจสอบว่ามีฟิลด์นี้
+  cost?: number;
   stock_quantity: number;
   min_stock_level: number;
   brand?: string;
   model?: string;
   description?: string;
   imageUrl?: string;
+  location?: string;
 }
 
 interface Movement {
   id: string;
-  product: Product;
-  movement_type: string;
+  product_id: string;
+  product: { name: string; code: string }; // เพิ่ม product code ด้วย
+  movement_type: 'in' | 'out' | 'product_removed'; // เพิ่มประเภทการเคลื่อนไหว 'product_removed'
   quantity: number;
-  reference_type?: string;
   notes?: string;
   created_at: string;
-  created_by_profile?: {
-    full_name: string;
-  };
+  created_by: string;
+  created_by_profile: { full_name: string };
+  reference_type?: string;
+  reference_id?: string;
+}
+
+interface UserProfile {
+  id: string;
+  full_name: string;
+  role: string;
 }
 
 const InventoryManagement: React.FC = () => {
-  const { userProfile } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
+
   const [products, setProducts] = useState<Product[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategory, setFilterCategory] = useState('all');
-  const [isReceiveProductOpen, setIsReceiveProductOpen] = useState(false); // <--- **(เปลี่ยนชื่อ)**
-  const [isAdjustStockOpen, setIsAdjustStockOpen] = useState(false);
-  const [isEditProductOpen, setIsEditProductOpen] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [adjustmentQuantity, setAdjustmentQuantity] = useState('');
-  const [adjustmentType, setAdjustmentType] = useState('in');
-  const [adjustmentNotes, setAdjustmentNotes] = useState('');
-  const [newProduct, setNewProduct] = useState({
-    name: '',
-    code: '',
-    category: '',
-    price: '',
-    cost: '', // <--- **(สำคัญ)** เพิ่มฟิลด์ cost
-    received_quantity: '', // <--- **(เปลี่ยนชื่อ)** สำหรับจำนวนที่รับเข้า
-    min_stock_level: '5',
-    brand: '',
-    model: '',
-    description: ''
+  const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
+  const [isEditProductModalOpen, setIsEditProductModalOpen] = useState(false);
+  const [newProduct, setNewProduct] = useState<Partial<Product>>({
+    stock_quantity: 0,
+    min_stock_level: 0,
+    location: '',
   });
-  const [newProductImage, setNewProductImage] = useState<File | null>(null);
-  const [editingProductImage, setEditingProductImage] = useState<File | null>(null);
-  const [exportPeriod, setExportPeriod] = useState('1month');
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [isReceivingProduct, setIsReceivingProduct] = useState(false);
+  const [receiveQuantity, setReceiveQuantity] = useState<number | ''>('');
+  const [receiveNotes, setReceiveNotes] = useState('');
+  const [receiveProductId, setReceiveProductId] = useState<string | null>(null);
+  const [receiveCost, setReceiveCost] = useState<number | ''>('');
+  const [uploadingImage, setUploadingImage] = useState(false);
 
-  useEffect(() => {
-    loadProducts();
-    loadMovements();
-  }, []);
-
-  // โหลดข้อมูลสินค้า
-  const loadProducts = async () => {
-    const { data, error } = await supabase
-      .from('products')
-      .select('*')
-      .order('name');
-    
-    if (error) {
-      toast({ title: "ข้อผิดพลาด", description: "ไม่สามารถโหลดข้อมูลสินค้าได้", variant: "destructive" });
+  // Load User Profile
+  const loadUserProfile = useCallback(async () => {
+    if (!user) {
+      setUserProfile(null);
       return;
     }
-    setProducts(data || []);
-  };
-
-  // โหลดข้อมูลการเคลื่อนไหวของสินค้า
-  const loadMovements = async () => {
-    const { data, error } = await supabase
-      .from('inventory_movements')
-      .select(`
-        *,
-        product:products(*),
-        created_by_profile:profiles!inventory_movements_created_by_fkey(full_name)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(50);
-    
-    if (error) {
-      toast({ title: "ข้อผิดพลาด", description: "ไม่สามารถโหลดข้อมูลการเคลื่อนไหวได้", variant: "destructive" });
-      return;
-    }
-    setMovements(data || []);
-  };
-
-  // รับสินค้าเข้า (เปลี่ยนชื่อจาก addProduct)
-  const receiveProduct = async () => { // <--- **(เปลี่ยนชื่อฟังก์ชัน)**
-    if (!newProduct.name || !newProduct.code || !newProduct.category || !newProduct.price || !newProduct.cost || !newProduct.received_quantity) { // <--- **(เพิ่ม cost และ received_quantity)**
-      toast({ title: "ข้อผิดพลาด", description: "กรุณากรอกข้อมูลที่จำเป็นทั้งหมด", variant: "destructive" });
-      return;
-    }
-
     try {
-      let imageUrl: string | null = null;
-
-      if (newProductImage) {
-        const fileExtension = newProductImage.name.split('.').pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExtension}`;
-        const filePath = `product-images/${fileName}`;
-
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('furniture-images')
-          .upload(filePath, newProductImage, {
-            cacheControl: '3600',
-            upsert: false,
-          });
-
-        if (uploadError) {
-          throw new Error(`ไม่สามารถอัปโหลดรูปภาพได้: ${uploadError.message}`);
-        }
-
-        const { data: publicUrlData } = supabase.storage
-          .from('furniture-images')
-          .getPublicUrl(filePath);
-        
-        imageUrl = publicUrlData?.publicUrl || null;
-      }
-
-      const parsedPrice = parseFloat(newProduct.price);
-      const parsedCost = parseFloat(newProduct.cost); // <--- **(สำคัญ)** parse cost
-      const parsedReceivedQuantity = parseInt(newProduct.received_quantity); // <--- **(สำคัญ)** parse received quantity
-
-      // 1. เพิ่มหรืออัปเดตสินค้าในตาราง products
-      const { data: existingProduct, error: fetchError } = await supabase
-        .from('products')
-        .select('id, stock_quantity')
-        .eq('code', newProduct.code)
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, role')
+        .eq('id', user.id)
         .single();
 
-      let productId = null;
-      let newStockAfterReceive = parsedReceivedQuantity;
-
-      if (fetchError && fetchError.code === 'PGRST116') { // No rows found
-        // สินค้าใหม่: insert
-        const { data: insertedProduct, error: insertError } = await supabase
-          .from('products')
-          .insert({
-            name: newProduct.name,
-            code: newProduct.code,
-            category: newProduct.category,
-            price: parsedPrice,
-            cost: parsedCost, // <--- **(สำคัญ)** บันทึก cost
-            stock_quantity: parsedReceivedQuantity, // สต็อกเริ่มต้นคือจำนวนที่รับเข้า
-            min_stock_level: parseInt(newProduct.min_stock_level),
-            brand: newProduct.brand || null,
-            model: newProduct.model || null,
-            description: newProduct.description || null,
-            imageUrl: imageUrl,
-            created_by: userProfile?.id // บันทึกผู้สร้างสินค้า
-          })
-          .select('id')
-          .single();
-        
-        if (insertError) throw insertError;
-        productId = insertedProduct.id;
-      } else if (existingProduct) {
-        // สินค้ามีอยู่แล้ว: update stock_quantity
-        newStockAfterReceive = existingProduct.stock_quantity + parsedReceivedQuantity;
-        const { error: updateError } = await supabase
-          .from('products')
-          .update({
-            stock_quantity: newStockAfterReceive,
-            name: newProduct.name, // อนุญาตให้อัปเดตข้อมูลอื่น ๆ ด้วย
-            category: newProduct.category,
-            price: parsedPrice,
-            cost: parsedCost,
-            min_stock_level: parseInt(newProduct.min_stock_level),
-            brand: newProduct.brand || null,
-            model: newProduct.model || null,
-            description: newProduct.description || null,
-            // ไม่อัปเดต imageUrl หากไม่มีการเลือกไฟล์ใหม่
-            ...(imageUrl && { imageUrl: imageUrl })
-          })
-          .eq('id', existingProduct.id);
-        
-        if (updateError) throw updateError;
-        productId = existingProduct.id;
-      } else if (fetchError) {
-        throw fetchError;
-      }
-
-      if (!productId) {
-        throw new Error("ไม่สามารถระบุ ID สินค้าได้");
-      }
-
-      // 2. บันทึกการเคลื่อนไหวของสินค้า
-      const { error: movementError } = await supabase
-        .from('inventory_movements')
-        .insert({
-          product_id: productId,
-          movement_type: 'in', // ประเภท 'in' สำหรับการรับสินค้าเข้า
-          quantity: parsedReceivedQuantity,
-          reference_type: 'product_receipt', // ประเภทอ้างอิง: การรับสินค้า
-          notes: `รับสินค้าเข้า: ${newProduct.description || newProduct.name}`,
-          created_by: userProfile?.id
-        });
-
-      if (movementError) throw movementError;
-
-      // 3. บันทึกค่าใช้จ่ายในตาราง branch_expenses
-      const totalCost = parsedCost * parsedReceivedQuantity;
-      if (totalCost > 0) {
-        const { error: expenseError } = await supabase
-          .from('branch_expenses')
-          .insert({
-            amount: totalCost,
-            description: `ต้นทุนสินค้า: ${newProduct.name} (${newProduct.code}) จำนวน ${parsedReceivedQuantity} หน่วย`,
-            category: 'ต้นทุนสินค้า', // <--- **(สำคัญ)** หมวดหมู่ใหม่
-            expense_date: new Date().toISOString().split('T')[0],
-            created_by: userProfile?.id
-          });
-
-        if (expenseError) throw expenseError;
-      }
-
-      toast({ title: "สำเร็จ", description: "รับสินค้าเข้าและบันทึกค่าใช้จ่ายเรียบร้อย" });
-      setIsReceiveProductOpen(false); // <--- **(เปลี่ยนชื่อ)**
-      setNewProduct({
-        name: '', code: '', category: '', price: '', cost: '', received_quantity: '', // <--- **(รีเซ็ตค่า)**
-        min_stock_level: '5', brand: '', model: '', description: ''
-      });
-      setNewProductImage(null);
-      loadProducts();
-      loadMovements();
-
+      if (error) throw error;
+      setUserProfile(data);
     } catch (error: any) {
-      toast({ 
-        title: "ข้อผิดพลาด", 
-        description: error.message || "ไม่สามารถรับสินค้าเข้าได้", 
-        variant: "destructive" 
+      console.error("Error loading user profile:", error.message);
+      toast({
+        title: "ข้อผิดพลาด",
+        description: "ไม่สามารถโหลดข้อมูลโปรไฟล์ผู้ใช้ได้",
+        variant: "destructive",
       });
     }
-  };
+  }, [user, toast]);
 
-  // แก้ไขสินค้า
-  const editProduct = async () => {
-    if (!editingProduct) return;
+  // Load Products
+  const loadProducts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.from('products').select('*').order('name', { ascending: true });
+      if (error) throw error;
+      setProducts(data);
+    } catch (error: any) {
+      console.error("Error loading products:", error.message);
+      toast({
+        title: "ข้อผิดพลาด",
+        description: "ไม่สามารถโหลดรายการสินค้าได้",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  // Load Movements
+  const loadMovements = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('inventory_movements')
+        .select(`
+          id,
+          product_id,
+          product:products(name, code),
+          movement_type,
+          quantity,
+          notes,
+          created_at,
+          created_by,
+          created_by_profile:profiles(full_name)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(10); // แสดงการเคลื่อนไหวล่าสุด 10 รายการ
+
+      if (error) throw error;
+      setMovements(data as Movement[]);
+    } catch (error: any) {
+      console.error("Error loading movements:", error.message);
+      toast({
+        title: "ข้อผิดพลาด",
+        description: "ไม่สามารถโหลดประวัติการเคลื่อนไหวได้",
+        variant: "destructive",
+      });
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    loadUserProfile();
+    loadProducts();
+    loadMovements();
+  }, [loadUserProfile, loadProducts, loadMovements]);
+
+  // Handle Add Product (เปลี่ยนเป็น รับสินค้าเข้าสาขา)
+  const handleAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userProfile) {
+      toast({ title: "ข้อผิดพลาด", description: "ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่", variant: "destructive" });
+      return;
+    }
 
     try {
-      let imageUrl = editingProduct.imageUrl;
-
-      if (editingProductImage) {
-        // ลบรูปภาพเก่าออกหากมีอยู่
-        if (imageUrl) {
-          // สกัด path ของไฟล์หลังจาก 'product-images/'
-          const oldFilePath = imageUrl.split('product-images/')[1]; 
-          if (oldFilePath) {
-            const { error: storageError } = await supabase.storage.from('furniture-images').remove([`product-images/${oldFilePath}`]);
-            if (storageError) {
-              console.error("ข้อผิดพลาดในการลบรูปภาพเก่าจาก Storage:", storageError.message);
-              // ไม่จำเป็นต้อง throw error ที่นี่ สามารถดำเนินการต่อไปได้
-            }
-          }
-        }
-
-        const fileExtension = editingProductImage.name.split('.').pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExtension}`;
-        const filePath = `product-images/${fileName}`;
-
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('furniture-images')
-          .upload(filePath, editingProductImage, {
-            cacheControl: '3600',
-            upsert: true, // ใช้ upsert เพื่อเขียนทับหากมีไฟล์ชื่อเดียวกัน (แม้ว่าเราจะสร้างชื่อที่ไม่ซ้ำกัน)
-          });
-
-        if (uploadError) {
-          throw new Error(`ไม่สามารถอัปโหลดรูปภาพได้: ${uploadError.message}`);
-        }
-
-        const { data: publicUrlData } = supabase.storage
-          .from('furniture-images')
-          .getPublicUrl(filePath);
-        
-        imageUrl = publicUrlData?.publicUrl || null;
-      }
-
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('products')
-        .update({
-          name: editingProduct.name,
-          code: editingProduct.code,
-          category: editingProduct.category,
-          price: editingProduct.price,
-          cost: editingProduct.cost || null, // <--- **(สำคัญ)** บันทึก cost
-          stock_quantity: editingProduct.stock_quantity,
-          min_stock_level: editingProduct.min_stock_level,
-          brand: editingProduct.brand || null,
-          model: editingProduct.model || null,
-          description: editingProduct.description || null,
-          imageUrl: imageUrl,
+        .insert({
+          ...newProduct,
+          stock_quantity: newProduct.stock_quantity || 0,
+          min_stock_level: newProduct.min_stock_level || 0,
+          created_by: userProfile.id,
         })
-        .eq('id', editingProduct.id);
+        .select()
+        .single();
 
       if (error) throw error;
 
-      toast({ title: "สำเร็จ", description: "แก้ไขสินค้าเรียบร้อย" });
-      setIsEditProductOpen(false);
-      setEditingProduct(null);
-      setEditingProductImage(null);
+      toast({ title: "สำเร็จ", description: "เพิ่มสินค้าใหม่เรียบร้อย" });
+      setIsAddProductModalOpen(false);
+      setNewProduct({});
       loadProducts();
-
+      loadMovements(); // โหลดการเคลื่อนไหวใหม่เพื่อให้ประวัติขึ้นทันที
     } catch (error: any) {
-      toast({ 
-        title: "ข้อผิดพลาด", 
-        description: error.message || "ไม่สามารถแก้ไขสินค้าได้", 
-        variant: "destructive" 
+      toast({
+        title: "ข้อผิดพลาด",
+        description: error.message || "ไม่สามารถเพิ่มสินค้าได้",
+        variant: "destructive",
       });
     }
   };
 
-  // ลบสินค้า
-  const deleteProduct = async (productId: string, imageUrl: string | undefined) => {
-    if (!confirm("คุณแน่ใจหรือไม่ว่าต้องการลบสินค้าชิ้นนี้? การกระทำนี้ไม่สามารถย้อนกลับได้และจะลบการเคลื่อนไหวทั้งหมดที่เกี่ยวข้องด้วย")) {
+  // Handle Edit Product
+  const handleEditProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProduct) return;
+
+    try {
+      const { error } = await supabase
+        .from('products')
+        .update({
+          name: selectedProduct.name,
+          code: selectedProduct.code,
+          category: selectedProduct.category,
+          price: selectedProduct.price,
+          cost: selectedProduct.cost,
+          stock_quantity: selectedProduct.stock_quantity,
+          min_stock_level: selectedProduct.min_stock_level,
+          brand: selectedProduct.brand,
+          model: selectedProduct.model,
+          description: selectedProduct.description,
+          imageUrl: selectedProduct.imageUrl,
+          location: selectedProduct.location,
+        })
+        .eq('id', selectedProduct.id);
+
+      if (error) throw error;
+
+      toast({ title: "สำเร็จ", description: "แก้ไขข้อมูลสินค้าเรียบร้อย" });
+      setIsEditProductModalOpen(false);
+      setSelectedProduct(null);
+      loadProducts();
+      loadMovements(); // โหลดการเคลื่อนไหวใหม่ในกรณีมีการเปลี่ยนแปลงที่อาจส่งผล
+    } catch (error: any) {
+      toast({
+        title: "ข้อผิดพลาด",
+        description: error.message || "ไม่สามารถแก้ไขข้อมูลสินค้าได้",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handle Image Upload
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!event.target.files || event.target.files.length === 0) {
+      toast({ title: "ข้อผิดพลาด", description: "ไม่ได้เลือกรูปภาพ", variant: "destructive" });
       return;
     }
 
+    const file = event.target.files[0];
+    const filePath = `product-images/${Date.now()}-${file.name}`;
+
+    setUploadingImage(true);
     try {
-      // ขั้นแรก ลบรูปภาพที่เกี่ยวข้องออกจาก storage
+      const { data, error } = await supabase.storage
+        .from('furniture-images') // ตรวจสอบว่าชื่อ bucket ถูกต้อง
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (error) throw error;
+
+      const { data: publicUrlData } = supabase.storage
+        .from('furniture-images')
+        .getPublicUrl(filePath);
+
+      if (publicUrlData) {
+        if (isAddProductModalOpen) {
+          setNewProduct((prev) => ({ ...prev, imageUrl: publicUrlData.publicUrl }));
+        } else if (isEditProductModalOpen && selectedProduct) {
+          setSelectedProduct((prev) => ({ ...prev!, imageUrl: publicUrlData.publicUrl }));
+        }
+        toast({ title: "สำเร็จ", description: "อัปโหลดรูปภาพเรียบร้อย" });
+      } else {
+        throw new Error("ไม่สามารถรับ URL สาธารณะได้");
+      }
+    } catch (error: any) {
+      console.error("ข้อผิดพลาดในการอัปโหลดรูปภาพ:", error.message);
+      toast({
+        title: "ข้อผิดพลาด",
+        description: error.message || "ไม่สามารถอัปโหลดรูปภาพได้",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  // Handle Receive Product (เพิ่มสต็อก)
+  const receiveProduct = async () => {
+    if (!receiveProductId || receiveQuantity === '' || receiveCost === '') {
+      toast({ title: "ข้อผิดพลาด", description: "กรุณากรอกข้อมูลรับสินค้าให้ครบถ้วน", variant: "destructive" });
+      return;
+    }
+    if (!userProfile) {
+      toast({ title: "ข้อผิดพลาด", description: "ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่", variant: "destructive" });
+      return;
+    }
+
+    setIsReceivingProduct(true);
+    try {
+      const parsedReceivedQuantity = Number(receiveQuantity);
+      const parsedReceivedCost = Number(receiveCost);
+      const totalCost = parsedReceivedQuantity * parsedReceivedCost;
+
+      const { data: currentProduct, error: productError } = await supabase
+        .from('products')
+        .select('stock_quantity, name, code, cost')
+        .eq('id', receiveProductId)
+        .single();
+
+      if (productError) throw productError;
+
+      const newStockQuantity = currentProduct.stock_quantity + parsedReceivedQuantity;
+
+      const { error: updateError } = await supabase
+        .from('products')
+        .update({ stock_quantity: newStockQuantity })
+        .eq('id', receiveProductId);
+
+      if (updateError) throw updateError;
+
+      // บันทึกการเคลื่อนไหว
+      const { error: movementError } = await supabase.from('inventory_movements').insert({
+        product_id: receiveProductId,
+        movement_type: 'in',
+        quantity: parsedReceivedQuantity,
+        notes: receiveNotes || 'รับสินค้าเข้า',
+        reference_type: 'receiving',
+        created_by: userProfile.id,
+      });
+
+      if (movementError) {
+        console.error("Error recording movement:", movementError.message);
+        // อาจจะ rollback การอัปเดตสต็อกหรือแค่เตือน
+      }
+
+      // บันทึกค่าใช้จ่ายใน branch_expenses (ต้นทุนสินค้า)
+      // **สำคัญ**: ต้องมีคอลัมน์ product_id ในตาราง branch_expenses
+      const { error: expenseError } = await supabase
+        .from('branch_expenses')
+        .insert({
+          amount: totalCost,
+          description: `ต้นทุนสินค้า: ${currentProduct.name} (${currentProduct.code}) จำนวน ${parsedReceivedQuantity} หน่วย`,
+          category: 'ต้นทุนสินค้า', // กำหนด Category เป็น 'ต้นทุนสินค้า'
+          expense_date: new Date().toISOString().split('T')[0],
+          created_by: userProfile.id,
+          product_id: receiveProductId // <-- **(เพิ่ม product_id ที่นี่)**
+        });
+
+      if (expenseError) {
+        console.error("Error recording expense:", expenseError.message);
+        // อาจจะ rollback การอัปเดตสต็อกและ movement
+      }
+
+      toast({ title: "สำเร็จ", description: "รับสินค้าเข้าเรียบร้อย" });
+      setReceiveQuantity('');
+      setReceiveNotes('');
+      setReceiveCost('');
+      setReceiveProductId(null);
+      setIsReceivingProduct(false);
+      loadProducts();
+      loadMovements(); // **(เรียก loadMovements ที่นี่เพื่อให้ประวัติขึ้นทันที)**
+    } catch (error: any) {
+      toast({
+        title: "ข้อผิดพลาด",
+        description: error.message || "ไม่สามารถรับสินค้าได้",
+        variant: "destructive",
+      });
+    } finally {
+      setIsReceivingProduct(false);
+    }
+  };
+
+  // ฟังก์ชันสำหรับจัดการการลบสินค้า
+  // เพิ่มพารามิเตอร์ deletionNote และ lastKnownStock
+  const deleteProduct = async (
+    productId: string,
+    imageUrl: string | undefined,
+    deletionNote: string,
+    lastKnownStock: number
+  ) => {
+    try {
+      if (!userProfile) {
+        toast({ title: "ข้อผิดพลาด", description: "ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่", variant: "destructive" });
+        return;
+      }
+
+      // 1. ลบค่าใช้จ่ายสาขาที่เกี่ยวข้อง (Branch Expenses)
+      //    **สำคัญ:** แนะนำให้ใช้ product_id ใน branch_expenses เพื่อความถูกต้อง
+      const { error: expenseDeleteError } = await supabase
+        .from('branch_expenses')
+        .delete()
+        .eq('product_id', productId); // สมมติว่า branch_expenses มี product_id
+
+      if (expenseDeleteError) {
+        console.error("Error deleting associated expenses:", expenseDeleteError.message);
+        toast({
+          title: "คำเตือน",
+          description: `ไม่สามารถลบค่าใช้จ่ายที่เกี่ยวข้องได้: ${expenseDeleteError.message}`,
+          variant: "destructive",
+        });
+      }
+
+      // 2. ลบรูปภาพที่เกี่ยวข้องจาก Storage
       if (imageUrl) {
-        const filePath = imageUrl.split('product-images/')[1]; // สกัด path หลังจาก 'product-images/'
+        const filePath = imageUrl.split('product-images/')[1];
         if (filePath) {
           const { error: storageError } = await supabase.storage
             .from('furniture-images')
@@ -356,712 +415,562 @@ const InventoryManagement: React.FC = () => {
 
           if (storageError) {
             console.error("ข้อผิดพลาดในการลบรูปภาพจาก storage:", storageError.message);
-            // ไม่ต้อง throw error ที่นี่, ดำเนินการลบข้อมูลสินค้าต่อไป
+            toast({
+              title: "คำเตือน",
+              description: `ไม่สามารถลบรูปภาพได้: ${storageError.message}`,
+              variant: "destructive",
+            });
           }
         }
       }
 
-      // จากนั้นลบสินค้าออกจากฐานข้อมูล
-      const { error } = await supabase
+      // 3. บันทึกการเคลื่อนไหว (Product Deletion Movement)
+      const { error: movementError } = await supabase
+        .from('inventory_movements')
+        .insert({
+          product_id: productId,
+          movement_type: 'product_removed', // ประเภทการเคลื่อนไหวใหม่
+          quantity: lastKnownStock, // บันทึกปริมาณสต็อกสุดท้ายก่อนลบ
+          notes: `สินค้าถูกลบ: ${deletionNote}`, // ใช้หมายเหตุการลบที่บังคับ
+          reference_type: 'product_deletion',
+          created_by: userProfile.id // บันทึก ID ผู้ใช้ที่ทำการลบ
+        });
+
+      if (movementError) {
+        console.error("Error recording deletion movement:", movementError.message);
+        toast({
+          title: "คำเตือน",
+          description: `ไม่สามารถบันทึกประวัติการลบได้: ${movementError.message}`,
+          variant: "destructive",
+        });
+      }
+
+      // 4. ลบสินค้าออกจากฐานข้อมูล (Products table)
+      const { error: productDeleteError } = await supabase
         .from('products')
         .delete()
         .eq('id', productId);
 
-      if (error) throw error;
+      if (productDeleteError) throw productDeleteError;
 
       toast({ title: "สำเร็จ", description: "ลบสินค้าเรียบร้อย" });
-      loadProducts();
-      loadMovements(); // โหลดข้อมูลการเคลื่อนไหวใหม่ด้วย เนื่องจากบางรายการอาจเกี่ยวข้องกับสินค้าที่ถูกลบ
+      loadProducts(); // โหลดรายการสินค้าใหม่
+      loadMovements(); // โหลดประวัติการเคลื่อนไหวใหม่
     } catch (error: any) {
-      toast({ 
-        title: "ข้อผิดพลาด", 
-        description: error.message || "ไม่สามารถลบสินค้าได้", 
-        variant: "destructive" 
+      toast({
+        title: "ข้อผิดพลาด",
+        description: error.message || "ไม่สามารถลบสินค้าได้",
+        variant: "destructive",
       });
     }
   };
 
-  // ปรับสต็อกสินค้า
-  const adjustStock = async () => {
-    if (!selectedProduct || !adjustmentQuantity) {
-      toast({ title: "ข้อผิดพลาด", description: "กรุณาระบุข้อมูลให้ครบถ้วน", variant: "destructive" });
-      return;
-    }
+  // ฟังก์ชันนี้จะถูกเรียกเมื่อผู้ใช้คลิกปุ่มลบ
+  const handleDeleteProductClick = (product: Product) => {
+    // ใช้ prompt เพื่อขอหมายเหตุการลบ (สามารถปรับเป็น Modal ที่สวยงามกว่านี้ได้)
+    const deletionNote = prompt(
+      `คุณแน่ใจหรือไม่ว่าต้องการลบสินค้า "${product.name}" (รหัส: ${product.code})?\n\n**กรุณาระบุเหตุผลในการลบ:**`
+    );
 
-    try {
-      const quantity = parseInt(adjustmentQuantity);
-      if (isNaN(quantity) || quantity <= 0) {
-        toast({ title: "ข้อผิดพลาด", description: "กรุณาป้อนจำนวนที่ถูกต้อง", variant: "destructive" });
-        return;
-      }
-
-      const movementQuantity = adjustmentType === 'in' ? quantity : -quantity;
-      const newStockQuantity = selectedProduct.stock_quantity + movementQuantity;
-
-      if (newStockQuantity < 0) {
-        toast({ title: "ข้อผิดพลาด", description: "สต็อกไม่เพียงพอ", variant: "destructive" });
-        return;
-      }
-
-      const { error: stockError } = await supabase
-        .from('products')
-        .update({ stock_quantity: newStockQuantity })
-        .eq('id', selectedProduct.id);
-
-      if (stockError) throw stockError;
-
-      const { error: movementError } = await supabase
-        .from('inventory_movements')
-        .insert({
-          product_id: selectedProduct.id,
-          movement_type: adjustmentType,
-          quantity: movementQuantity,
-          reference_type: 'adjustment',
-          notes: adjustmentNotes,
-          created_by: userProfile?.id
-        });
-
-      if (movementError) throw movementError;
-
-      toast({ title: "สำเร็จ", description: "ปรับปรุงสต็อกเรียบร้อย" });
-      setIsAdjustStockOpen(false);
-      setSelectedProduct(null);
-      setAdjustmentQuantity('');
-      setAdjustmentNotes('');
-      loadProducts();
-      loadMovements();
-
-    } catch (error: any) {
-      toast({ 
-        title: "ข้อผิดพลาด", 
-        description: error.message || "ไม่สามารถปรับปรุงสต็อกได้", 
-        variant: "destructive" 
+    if (deletionNote !== null && deletionNote.trim() !== '') {
+      // เรียกฟังก์ชัน deleteProduct พร้อมหมายเหตุ
+      deleteProduct(product.id, product.imageUrl, deletionNote.trim(), product.stock_quantity);
+    } else if (deletionNote === '') {
+      toast({
+        title: "ข้อผิดพลาด",
+        description: "กรุณาระบุเหตุผลในการลบสินค้า",
+        variant: "destructive",
+      });
+    } else {
+      // ผู้ใช้กด Cancel ใน prompt
+      toast({
+        title: "ยกเลิก",
+        description: "การลบสินค้าถูกยกเลิก",
       });
     }
   };
 
-  // ตรวจสอบสถานะสต็อก (หมด, ใกล้หมด, ปกติ)
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(amount);
+  };
+
   const getStockStatus = (product: Product) => {
     if (product.stock_quantity === 0) {
-      return <Badge className="bg-red-100 text-red-800">หมด</Badge>;
+      return <Badge variant="destructive">หมด</Badge>;
     } else if (product.stock_quantity <= product.min_stock_level) {
-      return <Badge className="bg-yellow-100 text-yellow-800">ใกล้หมด</Badge>;
-    } else {
-      return <Badge className="bg-green-100 text-green-800">ปกติ</Badge>;
+      // คุณอาจจะต้องกำหนด `variant="yellow"` หรือใช้ `className` แทนใน Badge component ของคุณ
+      return <Badge className="bg-yellow-500 text-white hover:bg-yellow-500/80">ใกล้หมด</Badge>;
     }
+    return <Badge variant="default">ปกติ</Badge>;
   };
 
-  const categories = [...new Set(products.map(p => p.category))];
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         product.code.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = filterCategory === 'all' || product.category === filterCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredProducts = products.filter(product =>
+    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    product.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (product.category && product.category.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
 
-  const lowStockProducts = products.filter(p => p.stock_quantity <= p.min_stock_level);
-
-  // ส่งออกข้อมูลการเคลื่อนไหวเป็น CSV
-  const exportMovementsToCsv = async () => {
-    let startDate: Date;
-    const endDate = new Date(); // วันที่ปัจจุบัน
-
-    switch (exportPeriod) {
-      case '1month':
-        startDate = new Date();
-        startDate.setMonth(endDate.getMonth() - 1);
-        break;
-      case '2months':
-        startDate = new Date();
-        startDate.setMonth(endDate.getMonth() - 2);
-        break;
-      case '3months':
-        startDate = new Date();
-        startDate.setMonth(endDate.getMonth() - 3);
-        break;
-      case '6months':
-        startDate = new Date();
-        startDate.setMonth(endDate.getMonth() - 6);
-        break;
-      case '1year':
-        startDate = new Date();
-        startDate.setFullYear(endDate.getFullYear() - 1);
-        break;
-      case 'all': // เพิ่มตัวเลือก "ทั้งหมด" เพื่อดึงข้อมูลทั้งหมด
-        startDate = new Date(0); // Epoch, เพื่อดึงข้อมูลทั้งหมด
-        break;
-      default:
-        startDate = new Date(0); // ค่าเริ่มต้น: ดึงข้อมูลทั้งหมด
-        break;
-    }
-
-    const { data, error } = await supabase
-      .from('inventory_movements')
-      .select(`
-        *,
-        product:products(name, code, category),
-        created_by_profile:profiles!inventory_movements_created_by_fkey(full_name)
-      `)
-      .gte('created_at', startDate.toISOString()) // กรองตั้งแต่วันที่เริ่มต้น
-      .lte('created_at', endDate.toISOString())   // กรองจนถึงวันที่สิ้นสุด (ปัจจุบัน)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      toast({ title: "ข้อผิดพลาด", description: "ไม่สามารถโหลดข้อมูลการเคลื่อนไหวเพื่อส่งออกได้", variant: "destructive" });
-      return;
-    }
-
-    if (!data || data.length === 0) {
-      toast({ title: "แจ้งเตือน", description: "ไม่มีข้อมูลการเคลื่อนไหวในช่วงเวลาที่เลือก", variant: "default" });
-      return;
-    }
-
-    // เตรียมข้อมูลสำหรับ CSV
-    const csvData = data.map(movement => ({
-      'ชื่อสินค้า': movement.product.name,
-      'รหัสสินค้า': movement.product.code,
-      'หมวดหมู่': movement.product.category,
-      'ประเภทการเคลื่อนไหว': movement.movement_type === 'in' ? 'เข้า' : 'ออก',
-      'จำนวน': movement.quantity,
-      'ประเภทอ้างอิง': movement.reference_type || '',
-      'หมายเหตุ': movement.notes || '',
-      'วันที่เคลื่อนไหว': new Date(movement.created_at).toLocaleString('th-TH'),
-      'สร้างโดย': movement.created_by_profile?.full_name || 'N/A',
+  const handleExportCSV = () => {
+    const csvData = products.map(product => ({
+      ID: product.id,
+      ชื่อสินค้า: product.name,
+      รหัสสินค้า: product.code,
+      หมวดหมู่: product.category,
+      ราคา: product.price,
+      ต้นทุน: product.cost,
+      จำนวนในสต็อก: product.stock_quantity,
+      ระดับสต็อกขั้นต่ำ: product.min_stock_level,
+      ยี่ห้อ: product.brand,
+      รุ่น: product.model,
+      คำอธิบาย: product.description,
+      URL_รูปภาพ: product.imageUrl,
+      ที่ตั้ง: product.location,
     }));
 
-    // แปลงข้อมูลเป็น CSV ด้วย PapaParse
     const csv = Papa.unparse(csvData);
-
-    // สร้าง Blob และ URL สำหรับดาวน์โหลด
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `inventory_movements_${exportPeriod}_${new Date().toISOString().slice(0, 10)}.csv`);
-    link.style.visibility = 'hidden'; // ซ่อนลิงก์
-    document.body.appendChild(link); // เพิ่มลิงก์ลงใน DOM ชั่วคราว
-    link.click(); // คลิกเพื่อดาวน์โหลด
-    document.body.removeChild(link); // ลบลิงก์ออกจาก DOM
-    toast({ title: "สำเร็จ", description: "ส่งออกข้อมูลเรียบร้อย" });
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', 'products_export.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast({ title: "สำเร็จ", description: "ส่งออกข้อมูลสินค้าเป็น CSV เรียบร้อย" });
   };
 
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <Package className="h-6 w-6 text-furniture-500" />
-          <h2 className="text-2xl font-bold text-slate-900">ระบบคลังสินค้า</h2>
-        </div>
-        
-        <div className="flex space-x-2">
-          {/* ส่วน Dialog ปรับสต็อกที่มีอยู่แล้ว */}
-          <Dialog open={isAdjustStockOpen} onOpenChange={setIsAdjustStockOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline">ปรับสต็อก</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>ปรับปรุงสต็อกสินค้า</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label>เลือกสินค้า</Label>
-                  <Select onValueChange={(value) => {
-                    const product = products.find(p => p.id === value);
-                    setSelectedProduct(product || null);
-                  }}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="เลือกสินค้า" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {products.map((product) => (
-                        <SelectItem key={product.id} value={product.id}>
-                          {product.name} - คงเหลือ: {product.stock_quantity}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>ประเภท</Label>
-                    <Select value={adjustmentType} onValueChange={setAdjustmentType}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="in">เพิ่ม</SelectItem>
-                        <SelectItem value="out">ลด</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div>
-                    <Label>จำนวน</Label>
-                    <Input
-                      type="number"
-                      value={adjustmentQuantity}
-                      onChange={(e) => setAdjustmentQuantity(e.target.value)}
-                      placeholder="จำนวน"
-                    />
-                  </div>
-                </div>
-                
-                <div>
-                  <Label>หมายเหตุ</Label>
-                  <Textarea
-                    value={adjustmentNotes}
-                    onChange={(e) => setAdjustmentNotes(e.target.value)}
-                    placeholder="หมายเหตุ (ไม่บังคับ)"
-                  />
-                </div>
-                
-                <Button onClick={adjustStock} className="w-full bg-furniture-500 hover:bg-furniture-600">
-                  ปรับปรุงสต็อก
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+    <div className="flex flex-col min-h-screen p-4">
+      <h1 className="text-3xl font-bold mb-6 text-slate-800">การจัดการสินค้าคงคลัง</h1>
 
-          {/* ส่วน Dialog "รับสินค้าเข้า" (เปลี่ยนชื่อจาก เพิ่มสินค้า) */}
-          <Dialog open={isReceiveProductOpen} onOpenChange={setIsReceiveProductOpen}> {/* <--- **(เปลี่ยนชื่อ)** */}
-            <DialogTrigger asChild>
-              <Button className="bg-furniture-500 hover:bg-furniture-600">
-                <Plus className="h-4 w-4 mr-2" />
-                รับสินค้าเข้า {/* <--- **(เปลี่ยนข้อความปุ่ม)** */}
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>รับสินค้าเข้าคลัง</DialogTitle> {/* <--- **(เปลี่ยนข้อความ title)** */}
-              </DialogHeader>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>ชื่อสินค้า *</Label>
-                  <Input
-                    value={newProduct.name}
-                    onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
-                    placeholder="ชื่อสินค้า"
-                  />
-                </div>
-                <div>
-                   <Label>รูปภาพสินค้า (ไม่บังคับ)</Label>
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setNewProductImage(e.target.files ? e.target.files[0] : null)}
-                  />
-                  {newProductImage && (
-                    <p className="text-sm text-slate-500 mt-1">ไฟล์ที่เลือก: {newProductImage.name}</p>
-                  )}
-                </div>
-                <div>
-                  <Label>รหัสสินค้า *</Label>
-                  <Input
-                    value={newProduct.code}
-                    onChange={(e) => setNewProduct({ ...newProduct, code: e.target.value })}
-                    placeholder="รหัสสินค้า"
-                  />
-                </div>
-                <div>
-                  <Label>หมวดหมู่ *</Label>
-                  <Input
-                    value={newProduct.category}
-                    onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
-                    placeholder="หมวดหมู่"
-                  />
-                </div>
-                <div>
-                  <Label>ราคาขาย *</Label>
-                  <Input
-                    type="number"
-                    value={newProduct.price}
-                    onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
-                    placeholder="ราคาขาย"
-                  />
-                </div>
-                <div>
-                  <Label>ราคาต้นทุน *</Label> {/* <--- **(สำคัญ)** เพิ่ม label และทำให้เป็น required */}
-                  <Input
-                    type="number"
-                    value={newProduct.cost}
-                    onChange={(e) => setNewProduct({ ...newProduct, cost: e.target.value })}
-                    placeholder="ราคาต้นทุน"
-                  />
-                </div>
-                <div>
-                  <Label>จำนวนที่รับเข้า *</Label> {/* <--- **(สำคัญ)** เปลี่ยน label และทำให้เป็น required */}
-                  <Input
-                    type="number"
-                    value={newProduct.received_quantity}
-                    onChange={(e) => setNewProduct({ ...newProduct, received_quantity: e.target.value })}
-                    placeholder="จำนวนที่รับเข้า"
-                  />
-                </div>
-                <div>
-                  <Label>สต็อกขั้นต่ำ</Label>
-                  <Input
-                    type="number"
-                    value={newProduct.min_stock_level}
-                    onChange={(e) => setNewProduct({ ...newProduct, min_stock_level: e.target.value })}
-                    placeholder="สต็อกขั้นต่ำ"
-                  />
-                </div>
-                <div>
-                  <Label>ยี่ห้อ</Label>
-                  <Input
-                    value={newProduct.brand}
-                    onChange={(e) => setNewProduct({ ...newProduct, brand: e.target.value })}
-                    placeholder="ยี่ห้อ"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Label>รุ่น</Label>
-                  <Input
-                    value={newProduct.model}
-                    onChange={(e) => setNewProduct({ ...newProduct, model: e.target.value })}
-                    placeholder="รุ่น"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Label>รายละเอียด</Label>
-                  <Textarea
-                    value={newProduct.description}
-                    onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
-                    placeholder="รายละเอียดสินค้า"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Button onClick={receiveProduct} className="w-full bg-furniture-500 hover:bg-furniture-600"> {/* <--- **(เปลี่ยน onClick)** */}
-                    บันทึกการรับสินค้า {/* <--- **(เปลี่ยนข้อความปุ่ม)** */}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+      {/* Product Summary and Actions */}
+      <Card className="mb-6 shadow-lg">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-xl font-medium">ภาพรวมสินค้า</CardTitle>
+          <div className="flex space-x-2">
+            {/* เปลี่ยนข้อความในปุ่ม Add Product */}
+            <Button onClick={() => setIsAddProductModalOpen(true)} className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white">
+              <Plus className="h-4 w-4" />
+              <span>รับสินค้าเข้าสาขา</span> {/* <-- เปลี่ยนตรงนี้ */}
+            </Button>
+            <Button onClick={handleExportCSV} variant="outline" className="flex items-center space-x-2 border-blue-600 text-blue-600 hover:bg-blue-50">
+              <Download className="h-4 w-4" />
+              <span>ส่งออก CSV</span>
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="p-4 bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md">
+              <CardTitle className="text-md mb-2">จำนวนสินค้าทั้งหมด</CardTitle>
+              <p className="text-3xl font-bold">{products.length}</p>
+            </Card>
+            <Card className="p-4 bg-gradient-to-br from-green-500 to-green-600 text-white shadow-md">
+              <CardTitle className="text-md mb-2">มูลค่าสินค้าในสต็อก (ประมาณ)</CardTitle>
+              <p className="text-3xl font-bold">
+                {formatCurrency(products.reduce((sum, p) => sum + (p.cost || 0) * p.stock_quantity, 0))}
+              </p>
+            </Card>
+            <Card className="p-4 bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-md">
+              <CardTitle className="text-md mb-2">สินค้าใกล้หมด</CardTitle>
+              <p className="text-3xl font-bold">
+                {products.filter(p => p.stock_quantity <= p.min_stock_level).length}
+              </p>
+            </Card>
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* แจ้งเตือนสต็อกต่ำ */}
-      {lowStockProducts.length > 0 && (
-        <Card className="border-yellow-200 bg-yellow-50">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center text-yellow-800">
-              <AlertTriangle className="h-5 w-5 mr-2" />
-              แจ้งเตือนสต็อกต่ำ ({lowStockProducts.length} รายการ)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              {lowStockProducts.map((product) => (
-                <div key={product.id} className="text-sm text-yellow-700">
-                  {product.name} - คงเหลือ: {product.stock_quantity}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ค้นหาและกรอง */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="md:col-span-2">
-          <CardContent className="pt-6">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
+      {/* Product List and Search */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-grow">
+        <div className="lg:col-span-2 flex flex-col space-y-6">
+          <Card className="shadow-lg flex-grow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-xl font-medium">รายการสินค้า</CardTitle>
               <Input
-                placeholder="ค้นหาสินค้า..."
+                type="text"
+                placeholder="ค้นหาสินค้า (ชื่อ, รหัส, หมวดหมู่)..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="max-w-sm"
               />
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="pt-6">
-            <Select value={filterCategory} onValueChange={setFilterCategory}>
-              <SelectTrigger>
-                <SelectValue placeholder="หมวดหมู่" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">ทุกหมวดหมู่</SelectItem>
-                {categories.map(category => (
-                  <SelectItem key={category} value={category}>{category}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* รายการสินค้า */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>รายการสินค้า ({filteredProducts.length} รายการ)</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4 max-h-96 overflow-y-auto">
-                {filteredProducts.map((product) => (
-                  <div key={product.id} className="border rounded-lg p-4 flex items-center space-x-4">
-                    {product.imageUrl && (
-                      <a 
-                        href={product.imageUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex-shrink-0"
-                      >
-                        <img 
-                          src={product.imageUrl} 
-                          alt={product.name} 
-                          className="w-20 h-20 object-cover rounded-md" 
-                        />
-                      </a>
-                    )}
-                    <div className="flex-1">
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex-1">
-                          <h3 className="font-medium">{product.name}</h3>
-                          <p className="text-sm text-slate-600">{product.code} • {product.category}</p>
-                          {product.brand && <p className="text-sm text-slate-600">{product.brand} {product.model}</p>}
+              {loading ? (
+                <div className="text-center py-8">กำลังโหลดสินค้า...</div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="text-center py-8 text-slate-500">ไม่พบสินค้า</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredProducts.map((product) => (
+                    <Card key={product.id} className="flex p-4 shadow-sm hover:shadow-md transition-shadow duration-200">
+                      {product.imageUrl && (
+                        <div className="w-24 h-24 mr-4 flex-shrink-0">
+                          <img
+                            src={product.imageUrl}
+                            alt={product.name}
+                            className="w-full h-full object-cover rounded-md"
+                          />
                         </div>
-                        {getStockStatus(product)}
-                      </div>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        <div>
-                          <p className="text-slate-600">ราคาขาย</p>
-                          <p className="font-medium">฿{product.price.toLocaleString()}</p>
-                        </div>
-                        {/* แสดงราคาต้นทุน */}
-                        {product.cost !== undefined && (
-                          <div>
-                            <p className="text-slate-600">ราคาต้นทุน</p>
-                            <p className="font-medium">฿{product.cost.toLocaleString()}</p>
-                          </div>
+                      )}
+                      <div className="flex-grow">
+                        <h3 className="font-semibold text-lg text-slate-800">{product.name}</h3>
+                        <p className="text-sm text-slate-600">รหัส: {product.code}</p>
+                        <p className="text-sm text-slate-600">หมวดหมู่: {product.category}</p>
+                        <p className="text-sm text-slate-600">ราคา: {formatCurrency(product.price)}</p>
+                        <p className="text-sm text-slate-600">สต็อก: {product.stock_quantity}</p>
+                        {product.location && (
+                          <p className="text-sm text-slate-600">ที่ตั้ง: {product.location}</p>
                         )}
-                        <div>
-                          <p className="text-slate-600">คงเหลือ</p>
-                          <p className="font-medium">{product.stock_quantity}</p>
-                        </div>
-                        <div>
-                          <p className="text-slate-600">ขั้นต่ำ</p>
-                          <p className="font-medium">{product.min_stock_level}</p>
-                        </div>
-                        <div className="flex space-x-2">
+                        {getStockStatus(product)}
+                        <div className="flex space-x-2 mt-3">
+                          <Button size="sm" onClick={() => { setSelectedProduct(product); setIsEditProductModalOpen(true); }}>
+                            <Edit className="h-4 w-4 mr-1" /> แก้ไข
+                          </Button>
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant="secondary"
                             onClick={() => {
-                              setEditingProduct({ ...product }); // สร้างสำเนาเพื่อแก้ไข
-                              setIsEditProductOpen(true);
+                              setReceiveProductId(product.id);
+                              setIsReceivingProduct(true);
                             }}
                           >
-                            <Edit className="h-4 w-4 mr-1" />
-                            แก้ไข
+                            <PlusCircle className="h-4 w-4 mr-1" /> รับเข้า
                           </Button>
+                          {/* ปุ่มลบสินค้า - เรียกใช้ handleDeleteProductClick */}
                           <Button
                             size="sm"
                             variant="destructive"
-                            onClick={() => deleteProduct(product.id, product.imageUrl)}
+                            onClick={() => handleDeleteProductClick(product)}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-4 w-4" /> ลบ
                           </Button>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Dialog สำหรับแก้ไขสินค้า */}
-        <Dialog open={isEditProductOpen} onOpenChange={setIsEditProductOpen}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>แก้ไขสินค้า</DialogTitle>
-            </DialogHeader>
-            {editingProduct && (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>ชื่อสินค้า *</Label>
-                  <Input
-                    value={editingProduct.name}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
-                    placeholder="ชื่อสินค้า"
-                  />
-                </div>
-                <div>
-                  <Label>รูปภาพสินค้า (เลือกใหม่)</Label>
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setEditingProductImage(e.target.files ? e.target.files[0] : null)}
-                  />
-                  {editingProductImage ? (
-                    <p className="text-sm text-slate-500 mt-1">ไฟล์ที่เลือก: {editingProductImage.name}</p>
-                  ) : editingProduct.imageUrl ? (
-                    <p className="text-sm text-slate-500 mt-1">รูปภาพปัจจุบัน: <a href={editingProduct.imageUrl} target="_blank" rel="noopener noreferrer" className="text-furniture-500 underline">ดูรูปภาพ</a></p>
-                  ) : (
-                    <p className="text-sm text-slate-500 mt-1">ไม่มีรูปภาพปัจจุบัน</p>
-                  )}
-                </div>
-                <div>
-                  <Label>รหัสสินค้า *</Label>
-                  <Input
-                    value={editingProduct.code}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, code: e.target.value })}
-                    placeholder="รหัสสินค้า"
-                  />
-                </div>
-                <div>
-                  <Label>หมวดหมู่ *</Label>
-                  <Input
-                    value={editingProduct.category}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
-                    placeholder="หมวดหมู่"
-                  />
-                </div>
-                <div>
-                  <Label>ราคาขาย *</Label>
-                  <Input
-                    type="number"
-                    value={editingProduct.price}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, price: parseFloat(e.target.value) })}
-                    placeholder="ราคาขาย"
-                  />
-                </div>
-                <div>
-                  <Label>ราคาต้นทุน</Label>
-                  <Input
-                    type="number"
-                    value={editingProduct.cost || ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, cost: e.target.value ? parseFloat(e.target.value) : undefined })}
-                    placeholder="ราคาต้นทุน"
-                  />
-                </div>
-                <div>
-                  <Label>สต็อกคงเหลือ</Label>
-                  <Input
-                    type="number"
-                    value={editingProduct.stock_quantity}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, stock_quantity: parseInt(e.target.value) })}
-                    placeholder="สต็อกคงเหลือ"
-                    disabled // ไม่สามารถปรับสต็อกผ่านหน้าจอนี้ได้ ต้องใช้ฟังก์ชัน "ปรับสต็อก"
-                  />
-                </div>
-                <div>
-                  <Label>สต็อกขั้นต่ำ</Label>
-                  <Input
-                    type="number"
-                    value={editingProduct.min_stock_level}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, min_stock_level: parseInt(e.target.value) })}
-                    placeholder="สต็อกขั้นต่ำ"
-                  />
-                </div>
-                <div>
-                  <Label>ยี่ห้อ</Label>
-                  <Input
-                    value={editingProduct.brand || ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, brand: e.target.value })}
-                    placeholder="ยี่ห้อ"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Label>รุ่น</Label>
-                  <Input
-                    value={editingProduct.model || ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, model: e.target.value })}
-                    placeholder="รุ่น"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Label>รายละเอียด</Label>
-                  <Textarea
-                    value={editingProduct.description || ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
-                    placeholder="รายละเอียดสินค้า"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Button onClick={editProduct} className="w-full bg-furniture-500 hover:bg-furniture-600">
-                    บันทึกการแก้ไข
-                  </Button>
-                </div>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
-
-        {/* ประวัติการเคลื่อนไหว (ส่วนที่มีการเพิ่มฟังก์ชัน Export) */}
-        <div>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle>ประวัติการเคลื่อนไหว</CardTitle>
-              <div className="flex space-x-2">
-                {/* Dropdown สำหรับเลือกช่วงเวลา */}
-                <Select value={exportPeriod} onValueChange={setExportPeriod}>
-                  <SelectTrigger className="w-[120px]">
-                    <SelectValue placeholder="เลือกช่วงเวลา" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1month">1 เดือน</SelectItem>
-                    <SelectItem value="2months">2 เดือน</SelectItem>
-                    <SelectItem value="3months">3 เดือน</SelectItem>
-                    <SelectItem value="6months">6 เดือน</SelectItem>
-                    <SelectItem value="1year">1 ปี</SelectItem>
-                    <SelectItem value="all">ทั้งหมด</SelectItem>
-                  </SelectContent>
-                </Select>
-                {/* ปุ่ม Export CSV */}
-                <Button onClick={exportMovementsToCsv} size="sm" variant="outline">
-                  <Download className="h-4 w-4 mr-1" />
-                  Export CSV
-                </Button>
-              </div>
+        {/* Inventory Movement History */}
+        <div className="lg:col-span-1 flex flex-col space-y-6">
+          <Card className="shadow-lg flex-grow">
+            <CardHeader>
+              <CardTitle className="text-xl font-medium">ประวัติการเคลื่อนไหวสินค้า</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {movements.map((movement) => (
-                  <div key={movement.id} className="border rounded p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center space-x-2">
-                        {movement.movement_type === 'in' ? (
-                          <TrendingUp className="h-4 w-4 text-green-600" />
-                        ) : (
-                          <TrendingDown className="h-4 w-4 text-red-600" />
-                        )}
-                        <span className="text-sm font-medium">{movement.product.name}</span>
+              <div className="space-y-4">
+                {movements.length === 0 ? (
+                  <p className="text-center text-slate-500">ยังไม่มีการเคลื่อนไหว</p>
+                ) : (
+                  movements.map((movement) => (
+                    <div key={movement.id} className="border-b pb-3 last:border-b-0 last:pb-0">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          {/* แสดงไอคอนตาม movement_type */}
+                          {movement.movement_type === 'in' && (
+                            <TrendingUp className="h-4 w-4 text-green-600" />
+                          )}
+                          {movement.movement_type === 'out' && (
+                            <TrendingDown className="h-4 w-4 text-red-600" />
+                          )}
+                          {movement.movement_type === 'product_removed' && ( // เพิ่มไอคอนสำหรับการลบ
+                            <MinusCircle className="h-4 w-4 text-gray-500" />
+                          )}
+                          <span className="text-sm font-medium">{movement.product.name} ({movement.product.code})</span>
+                        </div>
+                        <span className={`text-sm font-medium ${
+                          movement.movement_type === 'in' ? 'text-green-600' :
+                          movement.movement_type === 'out' ? 'text-red-600' :
+                          'text-gray-600' // สีสำหรับ 'product_removed'
+                        }`}>
+                          {/* แสดงปริมาณสำหรับการลบเป็นลบ หรือตามปกติ */}
+                          {movement.movement_type === 'product_removed' ? `-${movement.quantity}` :
+                           (movement.quantity > 0 ? '+' : '') + movement.quantity}
+                        </span>
                       </div>
-                      <span className={`text-sm font-medium ${
-                        movement.quantity > 0 ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {movement.quantity > 0 ? '+' : ''}{movement.quantity}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-600">
-                      {new Date(movement.created_at).toLocaleString('th-TH')}
-                    </p>
-                    {movement.notes && (
-                      <p className="text-xs text-slate-500 mt-1">{movement.notes}</p>
-                    )}
-                    {movement.created_by_profile && (
-                      <p className="text-xs text-slate-500">
-                        โดย: {movement.created_by_profile.full_name}
+                      <p className="text-xs text-slate-600">
+                        {new Date(movement.created_at).toLocaleString('th-TH')}
                       </p>
-                    )}
-                  </div>
-                ))}
+                      {movement.notes && (
+                        <p className="text-xs text-slate-500 mt-1">หมายเหตุ: {movement.notes}</p>
+                      )}
+                      {movement.created_by_profile && (
+                        <p className="text-xs text-slate-500">
+                          โดย: {movement.created_by_profile.full_name}
+                        </p>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Add Product Modal (เปลี่ยนเป็น รับสินค้าเข้าสาขา) */}
+      <Dialog open={isAddProductModalOpen} onOpenChange={setIsAddProductModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>รับสินค้าเข้าสาขา</DialogTitle> {/* <-- เปลี่ยนตรงนี้ */}
+          </DialogHeader>
+          <form onSubmit={handleAddProduct} className="grid gap-4 py-4">
+            <Label htmlFor="name">ชื่อสินค้า</Label>
+            <Input
+              id="name"
+              value={newProduct.name || ''}
+              onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
+              required
+            />
+            <Label htmlFor="code">รหัสสินค้า</Label>
+            <Input
+              id="code"
+              value={newProduct.code || ''}
+              onChange={(e) => setNewProduct({ ...newProduct, code: e.target.value })}
+              required
+            />
+            <Label htmlFor="category">หมวดหมู่</Label>
+            <Input
+              id="category"
+              value={newProduct.category || ''}
+              onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
+              required
+            />
+            <Label htmlFor="price">ราคา</Label>
+            <Input
+              id="price"
+              type="number"
+              step="0.01"
+              value={newProduct.price || ''}
+              onChange={(e) => setNewProduct({ ...newProduct, price: parseFloat(e.target.value) })}
+              required
+            />
+            <Label htmlFor="cost">ต้นทุน (ถ้ามี)</Label>
+            <Input
+              id="cost"
+              type="number"
+              step="0.01"
+              value={newProduct.cost || ''}
+              onChange={(e) => setNewProduct({ ...newProduct, cost: parseFloat(e.target.value) })}
+            />
+            <Label htmlFor="stock_quantity">จำนวนในสต็อกเริ่มต้น</Label>
+            <Input
+              id="stock_quantity"
+              type="number"
+              value={newProduct.stock_quantity || ''}
+              onChange={(e) => setNewProduct({ ...newProduct, stock_quantity: parseInt(e.target.value) })}
+              required
+            />
+            <Label htmlFor="min_stock_level">ระดับสต็อกขั้นต่ำ</Label>
+            <Input
+              id="min_stock_level"
+              type="number"
+              value={newProduct.min_stock_level || ''}
+              onChange={(e) => setNewProduct({ ...newProduct, min_stock_level: parseInt(e.target.value) })}
+              required
+            />
+            <Label htmlFor="brand">ยี่ห้อ</Label>
+            <Input
+              id="brand"
+              value={newProduct.brand || ''}
+              onChange={(e) => setNewProduct({ ...newProduct, brand: e.target.value })}
+            />
+            <Label htmlFor="model">รุ่น</Label>
+            <Input
+              id="model"
+              value={newProduct.model || ''}
+              onChange={(e) => setNewProduct({ ...newProduct, model: e.target.value })}
+            />
+            <Label htmlFor="description">คำอธิบาย</Label>
+            <Textarea
+              id="description"
+              value={newProduct.description || ''}
+              onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
+            />
+            <Label htmlFor="location">ที่ตั้ง</Label>
+            <Input
+              id="location"
+              value={newProduct.location || ''}
+              onChange={(e) => setNewProduct({ ...newProduct, location: e.target.value })}
+            />
+            <Label htmlFor="imageUrl">รูปภาพสินค้า</Label>
+            <Input
+              id="imageUrl"
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              disabled={uploadingImage}
+            />
+            {newProduct.imageUrl && (
+              <img src={newProduct.imageUrl} alt="Preview" className="w-24 h-24 object-cover mt-2 rounded-md" />
+            )}
+            <DialogFooter>
+              <Button type="submit" disabled={uploadingImage}>เพิ่มสินค้า</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Product Modal */}
+      <Dialog open={isEditProductModalOpen} onOpenChange={setIsEditProductModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>แก้ไขสินค้า</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditProduct} className="grid gap-4 py-4">
+            <Label htmlFor="edit-name">ชื่อสินค้า</Label>
+            <Input
+              id="edit-name"
+              value={selectedProduct?.name || ''}
+              onChange={(e) => setSelectedProduct({ ...selectedProduct!, name: e.target.value })}
+              required
+            />
+            <Label htmlFor="edit-code">รหัสสินค้า</Label>
+            <Input
+              id="edit-code"
+              value={selectedProduct?.code || ''}
+              onChange={(e) => setSelectedProduct({ ...selectedProduct!, code: e.target.value })}
+              required
+            />
+            <Label htmlFor="edit-category">หมวดหมู่</Label>
+            <Input
+              id="edit-category"
+              value={selectedProduct?.category || ''}
+              onChange={(e) => setSelectedProduct({ ...selectedProduct!, category: e.target.value })}
+              required
+            />
+            <Label htmlFor="edit-price">ราคา</Label>
+            <Input
+              id="edit-price"
+              type="number"
+              step="0.01"
+              value={selectedProduct?.price || ''}
+              onChange={(e) => setSelectedProduct({ ...selectedProduct!, price: parseFloat(e.target.value) })}
+              required
+            />
+            <Label htmlFor="edit-cost">ต้นทุน (ถ้ามี)</Label>
+            <Input
+              id="edit-cost"
+              type="number"
+              step="0.01"
+              value={selectedProduct?.cost || ''}
+              onChange={(e) => setSelectedProduct({ ...selectedProduct!, cost: parseFloat(e.target.value) })}
+            />
+            <Label htmlFor="edit-stock_quantity">จำนวนในสต็อก</Label>
+            <Input
+              id="edit-stock_quantity"
+              type="number"
+              value={selectedProduct?.stock_quantity || ''}
+              onChange={(e) => setSelectedProduct({ ...selectedProduct!, stock_quantity: parseInt(e.target.value) })}
+              required
+              disabled // ไม่สามารถปรับสต็อกผ่านหน้าจอนี้ได้
+            />
+            <Label htmlFor="edit-min_stock_level">ระดับสต็อกขั้นต่ำ</Label>
+            <Input
+              id="edit-min_stock_level"
+              type="number"
+              value={selectedProduct?.min_stock_level || ''}
+              onChange={(e) => setSelectedProduct({ ...selectedProduct!, min_stock_level: parseInt(e.target.value) })}
+              required
+            />
+            <Label htmlFor="edit-brand">ยี่ห้อ</Label>
+            <Input
+              id="edit-brand"
+              value={selectedProduct?.brand || ''}
+              onChange={(e) => setSelectedProduct({ ...selectedProduct!, brand: e.target.value })}
+            />
+            <Label htmlFor="edit-model">รุ่น</Label>
+            <Input
+              id="edit-model"
+              value={selectedProduct?.model || ''}
+              onChange={(e) => setSelectedProduct({ ...selectedProduct!, model: e.target.value })}
+            />
+            <Label htmlFor="edit-description">คำอธิบาย</Label>
+            <Textarea
+              id="edit-description"
+              value={selectedProduct?.description || ''}
+              onChange={(e) => setSelectedProduct({ ...selectedProduct!, description: e.target.value })}
+            />
+            <Label htmlFor="edit-location">ที่ตั้ง</Label>
+            <Input
+              id="edit-location"
+              value={selectedProduct?.location || ''}
+              onChange={(e) => setSelectedProduct({ ...selectedProduct!, location: e.target.value })}
+            />
+            <Label htmlFor="edit-imageUrl">รูปภาพสินค้า</Label>
+            <Input
+              id="edit-imageUrl"
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              disabled={uploadingImage}
+            />
+            {selectedProduct?.imageUrl && (
+              <img src={selectedProduct.imageUrl} alt="Preview" className="w-24 h-24 object-cover mt-2 rounded-md" />
+            )}
+            <DialogFooter>
+              <Button type="submit" disabled={uploadingImage}>บันทึกการแก้ไข</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Receive Product Modal */}
+      <Dialog open={isReceivingProduct} onOpenChange={setIsReceivingProduct}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>รับสินค้าเข้าสต็อก</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <Label htmlFor="product-to-receive">สินค้า</Label>
+            <Select onValueChange={(value) => setReceiveProductId(value)} value={receiveProductId || ''}>
+              <SelectTrigger id="product-to-receive">
+                <SelectValue placeholder="เลือกสินค้า" />
+              </SelectTrigger>
+              <SelectContent>
+                {products.map((product) => (
+                  <SelectItem key={product.id} value={product.id}>
+                    {product.name} ({product.code})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Label htmlFor="receive-quantity">จำนวนที่รับเข้า</Label>
+            <Input
+              id="receive-quantity"
+              type="number"
+              value={receiveQuantity}
+              onChange={(e) => setReceiveQuantity(parseInt(e.target.value) || '')}
+              required
+            />
+            <Label htmlFor="receive-cost">ต้นทุนต่อหน่วย (สำหรับล็อตนี้)</Label>
+            <Input
+              id="receive-cost"
+              type="number"
+              step="0.01"
+              value={receiveCost}
+              onChange={(e) => setReceiveCost(parseFloat(e.target.value) || '')}
+              required
+            />
+            <Label htmlFor="receive-notes">หมายเหตุ (ถ้ามี)</Label>
+            <Textarea
+              id="receive-notes"
+              value={receiveNotes}
+              onChange={(e) => setReceiveNotes(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button onClick={receiveProduct} disabled={!receiveProductId || receiveQuantity === '' || receiveCost === ''}>
+              ยืนยันการรับเข้า
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
