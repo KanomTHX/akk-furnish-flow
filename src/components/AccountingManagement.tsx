@@ -1,13 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react'; // เพิ่ม useCallback
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-// เพิ่ม ShoppingCart ในส่วน import จาก lucide-react
-import { FileText, Calendar, DollarSign, TrendingUp, TrendingDown, MinusCircle, PlusCircle, ShoppingCart } from 'lucide-react';
+import { FileText, Calendar as CalendarIcon, DollarSign, TrendingUp, TrendingDown, MinusCircle, PlusCircle, ShoppingCart, Download } from 'lucide-react'; // Changed Calendar to CalendarIcon to avoid name collision
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import AddExpenseModal from './AddExpenseModal'; // Import AddExpenseModal ที่นี่
+import AddExpenseModal from './AddExpenseModal';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { format } from 'date-fns';
+import { Calendar } from '@/components/ui/calendar'; // Import Calendar component here
+import { cn } from '@/lib/utils'; // Assuming you have a utility for class names
 
 interface Transaction {
   id: string;
@@ -18,7 +21,7 @@ interface Transaction {
   date: string;
   reference_type?: string;
   reference_id?: string;
-  branch_id?: string; // เพิ่ม branch_id สำหรับค่าใช้จ่ายสาขา
+  branch_id?: string;
 }
 
 interface Summary {
@@ -41,7 +44,9 @@ const AccountingManagement: React.FC = () => {
   });
   const [selectedPeriod, setSelectedPeriod] = useState('thisMonth');
   const [loading, setLoading] = useState(true);
-  const [isAddExpenseModalOpen, setIsAddExpenseModalOpen] = useState(false); // เพิ่ม state นี้
+  const [isAddExpenseModalOpen, setIsAddExpenseModalOpen] = useState(false);
+  const [exportStartDate, setExportStartDate] = useState<Date | undefined>(undefined);
+  const [exportEndDate, setExportEndDate] = useState<Date | undefined>(undefined);
 
   const loadAccountingData = useCallback(async () => {
     setLoading(true);
@@ -98,7 +103,7 @@ const AccountingManagement: React.FC = () => {
       let { data: hirePurchasePayments, error: hirePurchasePaymentsError } = await supabase
         .from('hire_purchase_payments')
         .select('id, amount_paid, payment_date, created_at')
-        .eq('status', 'paid') // Only consider paid installments as income
+        .eq('status', 'paid')
         .gte('payment_date', startDate || '1970-01-01')
         .lte('payment_date', endDate || '2999-12-31');
 
@@ -110,7 +115,7 @@ const AccountingManagement: React.FC = () => {
         category: 'ผ่อนชำระ',
         amount: payment.amount_paid,
         description: `รับชำระผ่อน #${payment.id.substring(0, 8)}`,
-        date: payment.payment_date || new Date().toISOString().split('T')[0], // Use payment_date or fallback
+        date: payment.payment_date || new Date().toISOString().split('T')[0],
         reference_type: 'hire_purchase_payment',
         reference_id: payment.id,
       }));
@@ -118,7 +123,7 @@ const AccountingManagement: React.FC = () => {
       // Fetch general expenses (simplified for now, you might have an 'expenses' table)
       // For now, let's assume 'branch_expenses' is your general expense table
       let { data: branchExpenses, error: branchExpensesError } = await supabase
-        .from('branch_expenses') // ตารางค่าใช้จ่ายสาขา
+        .from('branch_expenses')
         .select('id, amount, description, category, expense_date')
         .gte('expense_date', startDate || '1970-01-01')
         .lte('expense_date', endDate || '2999-12-31');
@@ -137,7 +142,7 @@ const AccountingManagement: React.FC = () => {
       }));
 
       const allTransactions = [...cashSaleTransactions, ...hirePurchaseTransactions, ...expenseTransactions]
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sort by date descending
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       setTransactions(allTransactions);
 
@@ -167,11 +172,11 @@ const AccountingManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedPeriod, toast]); // เพิ่ม toast ใน useCallback dependency
+  }, [selectedPeriod, toast]);
 
   useEffect(() => {
     loadAccountingData();
-  }, [loadAccountingData]); // ใช้ loadAccountingData เป็น dependency
+  }, [loadAccountingData]);
 
   const formatCurrency = (amount: number) => {
     return `฿${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -189,6 +194,131 @@ const AccountingManagement: React.FC = () => {
     }
   };
 
+  const generateCsv = (data: Transaction[]) => {
+    const headers = ["วันที่", "ประเภท", "หมวดหมู่", "รายละเอียด", "จำนวนเงิน (฿)"];
+    const rows = data.map(t => [
+      new Date(t.date).toLocaleDateString('th-TH'),
+      t.type === 'income' ? 'รายรับ' : 'รายจ่าย',
+      t.category,
+      t.description,
+      t.amount.toFixed(2)
+    ]);
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(field => `"${field}"`).join(','))
+    ].join('\n');
+    return csvContent;
+  };
+
+  const handleExportTransactions = async () => {
+    if (!exportStartDate || !exportEndDate) {
+      toast({
+        title: "ข้อผิดพลาด",
+        description: "กรุณาเลือกช่วงวันที่สำหรับการส่งออกข้อมูล",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const start = exportStartDate.toISOString().split('T')[0];
+      const end = exportEndDate.toISOString().split('T')[0];
+
+      // Fetch all data for the selected period for export
+      let { data: cashSales, error: cashSalesError } = await supabase
+        .from('cash_sales')
+        .select('id, total_amount, sale_date, created_at')
+        .gte('sale_date', start)
+        .lte('sale_date', end);
+      if (cashSalesError) throw cashSalesError;
+
+      let { data: hirePurchasePayments, error: hirePurchasePaymentsError } = await supabase
+        .from('hire_purchase_payments')
+        .select('id, amount_paid, payment_date, created_at')
+        .eq('status', 'paid')
+        .gte('payment_date', start)
+        .lte('payment_date', end);
+      if (hirePurchasePaymentsError) throw hirePurchasePaymentsError;
+
+      let { data: branchExpenses, error: branchExpensesError } = await supabase
+        .from('branch_expenses')
+        .select('id, amount, description, category, expense_date')
+        .gte('expense_date', start)
+        .lte('expense_date', end);
+      if (branchExpensesError) throw branchExpensesError;
+
+      const cashSaleTransactions: Transaction[] = (cashSales || []).map(sale => ({
+        id: sale.id,
+        type: 'income',
+        category: 'ขายสินค้าเงินสด',
+        amount: sale.total_amount,
+        description: `ขายสินค้าเงินสด #${sale.id.substring(0, 8)}`,
+        date: sale.sale_date,
+        reference_type: 'cash_sale',
+        reference_id: sale.id,
+      }));
+
+      const hirePurchaseTransactions: Transaction[] = (hirePurchasePayments || []).map(payment => ({
+        id: payment.id,
+        type: 'income',
+        category: 'ผ่อนชำระ',
+        amount: payment.amount_paid,
+        description: `รับชำระผ่อน #${payment.id.substring(0, 8)}`,
+        date: payment.payment_date || new Date().toISOString().split('T')[0],
+        reference_type: 'hire_purchase_payment',
+        reference_id: payment.id,
+      }));
+
+      const expenseTransactions: Transaction[] = (branchExpenses || []).map(expense => ({
+        id: expense.id,
+        type: 'expense',
+        category: expense.category,
+        amount: expense.amount,
+        description: expense.description,
+        date: expense.expense_date,
+        reference_type: 'branch_expense',
+        reference_id: expense.id,
+      }));
+
+      const allTransactionsForExport = [...cashSaleTransactions, ...hirePurchaseTransactions, ...expenseTransactions]
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Sort ascending for CSV
+
+      if (allTransactionsForExport.length === 0) {
+        toast({
+          title: "ไม่พบข้อมูล",
+          description: "ไม่มีรายการธุรกรรมในช่วงวันที่ที่เลือก",
+          variant: "default",
+        });
+        return;
+      }
+
+      const csv = generateCsv(allTransactionsForExport);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `transactions_${start}_to_${end}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "ส่งออกสำเร็จ",
+        description: "ส่งออกข้อมูลธุรกรรมเป็นไฟล์ CSV เรียบร้อยแล้ว",
+      });
+
+    } catch (error: any) {
+      toast({
+        title: "ข้อผิดพลาดในการส่งออกข้อมูล",
+        description: error.message,
+        variant: "destructive",
+      });
+      console.error("Error exporting accounting data:", error);
+    }
+  };
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
@@ -196,11 +326,51 @@ const AccountingManagement: React.FC = () => {
           <FileText className="h-6 w-6 text-furniture-500" />
           <h2 className="text-2xl font-bold text-slate-900">ระบบบัญชี</h2>
         </div>
-        <div className="flex items-center space-x-4"> {/* เพิ่ม div นี้เพื่อรวมปุ่มและ Select */}
-          <Button onClick={() => setIsAddExpenseModalOpen(true)} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white"> {/* ปุ่มเพิ่มค่าใช้จ่าย */}
+        <div className="flex items-center space-x-4">
+          <Button onClick={() => setIsAddExpenseModalOpen(true)} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white">
             <PlusCircle className="h-4 w-4" />
             เพิ่มค่าใช้จ่ายสาขา
           </Button>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant={"outline"}
+                className={cn(
+                  "w-[240px] justify-start text-left font-normal",
+                  !exportStartDate && "text-muted-foreground"
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {exportStartDate ? (
+                  exportEndDate ? (
+                    `${format(exportStartDate, "PPP")} - ${format(exportEndDate, "PPP")}`
+                  ) : (
+                    format(exportStartDate, "PPP")
+                  )
+                ) : (
+                  <span>เลือกช่วงวันที่ส่งออก</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="range"
+                selected={{ from: exportStartDate, to: exportEndDate }}
+                onSelect={(range) => {
+                  setExportStartDate(range?.from);
+                  setExportEndDate(range?.to);
+                }}
+                numberOfMonths={2}
+              />
+            </PopoverContent>
+          </Popover>
+
+          <Button onClick={handleExportTransactions} className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white">
+            <Download className="h-4 w-4" />
+            ส่งออก CSV
+          </Button>
+
           <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
             <SelectTrigger className="w-48">
               <SelectValue />
@@ -257,7 +427,7 @@ const AccountingManagement: React.FC = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">ยอดขายเงินสด</CardTitle>
-            <ShoppingCart className="h-4 w-4 text-slate-500" /> {/* นี่คือบรรทัดที่ 259 */}
+            <ShoppingCart className="h-4 w-4 text-slate-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-furniture-500">{formatCurrency(summary.totalIncome - summary.hirePurchaseIncome)}</div>
@@ -285,7 +455,7 @@ const AccountingManagement: React.FC = () => {
                     {getTransactionIcon(transaction)}
                     <div>
                       <p className="font-medium">{transaction.description}</p>
-                      <div className="flex items-center space-x-2">\
+                      <div className="flex items-center space-x-2">
                         <Badge variant="outline">{transaction.category}</Badge>
                         <span className="text-sm text-slate-600">
                           {new Date(transaction.date).toLocaleDateString('th-TH')}
@@ -309,7 +479,7 @@ const AccountingManagement: React.FC = () => {
       <AddExpenseModal
         isOpen={isAddExpenseModalOpen}
         onClose={() => setIsAddExpenseModalOpen(false)}
-        onExpenseAdded={loadAccountingData} // เมื่อเพิ่มค่าใช้จ่ายสำเร็จ ให้โหลดข้อมูลบัญชีใหม่
+        onExpenseAdded={loadAccountingData}
       />
     </div>
   );
