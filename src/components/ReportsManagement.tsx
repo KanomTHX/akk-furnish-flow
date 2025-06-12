@@ -30,9 +30,12 @@ const ReportsManagement: React.FC = () => {
   useEffect(() => {
     const handleLoadData = async () => {
       try {
+        console.log('Loading data for report:', selectedReport, 'period:', selectedPeriod);
         const { start, end } = getDateRange(selectedPeriod);
+        console.log('Date range:', start, 'to', end);
         await loadReportData(selectedReport, start, end);
       } catch (error: any) {
+        console.error('Error loading report data:', error);
         toast({
           title: "ข้อผิดพลาด",
           description: error.message || "ไม่สามารถโหลดข้อมูลรายงานได้",
@@ -63,7 +66,7 @@ const ReportsManagement: React.FC = () => {
       return (
         <Card>
           <CardContent className="pt-6">
-            <p className="text-center py-8">กำลังโหลดรายงาน...</p>
+            <p className="text-center py-8 text-black">กำลังโหลดรายงาน...</p>
           </CardContent>
         </Card>
       );
@@ -79,9 +82,21 @@ const ReportsManagement: React.FC = () => {
       case 'hirePurchase':
         return hirePurchaseReport ? (
           <HirePurchaseReportCard hirePurchaseReport={hirePurchaseReport} />
-        ) : null;
+        ) : (
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-center py-8 text-black">ไม่มีข้อมูลเช่าซื้อในช่วงเวลานี้</p>
+            </CardContent>
+          </Card>
+        );
       default:
-        return null;
+        return (
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-center py-8 text-black">ไม่มีข้อมูลรายงาน</p>
+            </CardContent>
+          </Card>
+        );
     }
   };
 
@@ -89,8 +104,8 @@ const ReportsManagement: React.FC = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <BarChart3 className="h-6 w-6 text-furniture-500" />
-          <h2 className="text-2xl font-bold text-slate-900">ระบบรายงาน</h2>
+          <BarChart3 className="h-6 w-6 text-red-500" />
+          <h2 className="text-2xl font-bold text-black">ระบบรายงาน</h2>
         </div>
         
         <div className="flex space-x-2">
@@ -121,7 +136,7 @@ const ReportsManagement: React.FC = () => {
               key={report.key}
               variant={selectedReport === report.key ? "default" : "outline"}
               onClick={() => setSelectedReport(report.key)}
-              className={`h-16 ${selectedReport === report.key ? "bg-furniture-500 hover:bg-furniture-600" : ""}`}
+              className={`h-16 ${selectedReport === report.key ? "bg-red-500 hover:bg-red-600 text-white" : "text-black"}`}
             >
               <div className="text-center">
                 <Icon className="h-6 w-6 mx-auto mb-1" />

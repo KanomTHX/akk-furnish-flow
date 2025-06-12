@@ -13,10 +13,10 @@ const SalesReportCard: React.FC<SalesReportCardProps> = ({ salesReport }) => {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>รายงานการขาย</CardTitle>
+          <CardTitle className="text-black">รายงานการขาย</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-center text-slate-500 py-8">ไม่มีข้อมูลการขายในช่วงเวลานี้</p>
+          <p className="text-center text-black py-8">ไม่มีข้อมูลการขายในช่วงเวลานี้</p>
         </CardContent>
       </Card>
     );
@@ -25,7 +25,7 @@ const SalesReportCard: React.FC<SalesReportCardProps> = ({ salesReport }) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>รายงานการขาย</CardTitle>
+        <CardTitle className="text-black">รายงานการขาย</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
@@ -55,10 +55,10 @@ const SalesReportCard: React.FC<SalesReportCardProps> = ({ salesReport }) => {
           <div className="space-y-2">
             {salesReport.map((item, index) => (
               <div key={index} className="flex justify-between items-center p-3 border rounded">
-                <span>{item.period}</span>
+                <span className="text-black">{item.period}</span>
                 <div className="text-right">
-                  <p className="font-medium">{item.totalSales} รายการ</p>
-                  <p className="text-sm text-slate-600">{formatCurrency(item.totalAmount)}</p>
+                  <p className="font-medium text-black">{item.totalSales} รายการ</p>
+                  <p className="text-sm text-black">{formatCurrency(item.totalAmount)}</p>
                 </div>
               </div>
             ))}

@@ -11,7 +11,6 @@ import { useToast } from '@/hooks/use-toast';
 const Auth = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,7 +25,7 @@ const Auth = () => {
     try {
       let result;
       if (isSignUp) {
-        result = await signUp(password, fullName, username);
+        result = await signUp(username, password, fullName);
       } else {
         result = await signIn(username, password);
       }
@@ -76,32 +75,18 @@ const Auth = () => {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {isSignUp && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-black mb-1">
-                    ชื่อ-นามสกุล
-                  </label>
-                  <Input
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    required
-                    placeholder="กรอกชื่อ-นามสกุล"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-black mb-1">
-                    อีเมล
-                  </label>
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    placeholder="กรอกอีเมล"
-                  />
-                </div>
-              </>
+              <div>
+                <label className="block text-sm font-medium text-black mb-1">
+                  ชื่อ-นามสกุล
+                </label>
+                <Input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                  placeholder="กรอกชื่อ-นามสกุล"
+                />
+              </div>
             )}
             <div>
               <label className="block text-sm font-medium text-black mb-1">

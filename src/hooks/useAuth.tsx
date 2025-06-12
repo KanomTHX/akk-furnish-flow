@@ -7,8 +7,8 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error: any }>;
+  signIn: (username: string, password: string) => Promise<{ error: any }>;
+  signUp: (username: string, password: string, fullName: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   userProfile: any;
 }
@@ -56,21 +56,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    return { error };
+  const signIn = async (username: string, password: string) => {
+    try {
+      // First, find the user by username to get their email
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('username', username)
+        .single();
+
+      if (profileError || !profile) {
+        return { error: { message: 'ไม่พบชื่อผู้ใช้นี้ในระบบ' } };
+      }
+
+      // Then sign in with email and password
+      const { error } = await supabase.auth.signInWithPassword({
+        email: profile.email,
+        password,
+      });
+      
+      return { error };
+    } catch (error) {
+      return { error: { message: 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ' } };
+    }
   };
 
-  const signUp = async (email: string, password: string, fullName: string) => {
+  const signUp = async (username: string, password: string, fullName: string) => {
+    // For signup, we need to use email format, so we'll use username@system.local format
+    const email = `${username}@system.local`;
+    
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           full_name: fullName,
+          username: username,
         },
         emailRedirectTo: `${window.location.origin}/`,
       },

@@ -9,6 +9,33 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      branch_expenses: {
+        Row: {
+          amount: number
+          category: string | null
+          created_at: string | null
+          description: string | null
+          expense_date: string
+          id: string
+        }
+        Insert: {
+          amount: number
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          expense_date: string
+          id?: string
+        }
+        Update: {
+          amount?: number
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          expense_date?: string
+          id?: string
+        }
+        Relationships: []
+      }
       branches: {
         Row: {
           address: string | null
@@ -168,38 +195,105 @@ export type Database = {
       customers: {
         Row: {
           address: string | null
+          address_detail: string | null
           created_at: string | null
           customer_type: string
+          district_id: string | null
           email: string | null
           id: string
           last_purchase_date: string | null
           name: string
           phone: string
+          province_id: string | null
+          sub_district_id: string | null
           total_purchases: number | null
           updated_at: string | null
+          zip_code: string
         }
         Insert: {
           address?: string | null
+          address_detail?: string | null
           created_at?: string | null
           customer_type?: string
+          district_id?: string | null
           email?: string | null
           id?: string
           last_purchase_date?: string | null
           name: string
           phone: string
+          province_id?: string | null
+          sub_district_id?: string | null
           total_purchases?: number | null
           updated_at?: string | null
+          zip_code: string
         }
         Update: {
           address?: string | null
+          address_detail?: string | null
           created_at?: string | null
           customer_type?: string
+          district_id?: string | null
           email?: string | null
           id?: string
           last_purchase_date?: string | null
           name?: string
           phone?: string
+          province_id?: string | null
+          sub_district_id?: string | null
           total_purchases?: number | null
+          updated_at?: string | null
+          zip_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customers_district_id_fkey"
+            columns: ["district_id"]
+            isOneToOne: false
+            referencedRelation: "districts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customers_province_id_fkey"
+            columns: ["province_id"]
+            isOneToOne: false
+            referencedRelation: "provinces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customers_sub_district_id_fkey"
+            columns: ["sub_district_id"]
+            isOneToOne: false
+            referencedRelation: "sub_districts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      districts: {
+        Row: {
+          created_at: string | null
+          deleted_at: string | null
+          id: string
+          name_en: string | null
+          name_th: string | null
+          province_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          deleted_at?: string | null
+          id: string
+          name_en?: string | null
+          name_th?: string | null
+          province_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          deleted_at?: string | null
+          id?: string
+          name_en?: string | null
+          name_th?: string | null
+          province_id?: string | null
           updated_at?: string | null
         }
         Relationships: []
@@ -434,6 +528,7 @@ export type Database = {
           installment_number: number
           late_fee: number | null
           payment_date: string | null
+          payment_details: string | null
           payment_method: string | null
           receipt_number: string | null
           status: string
@@ -450,6 +545,7 @@ export type Database = {
           installment_number: number
           late_fee?: number | null
           payment_date?: string | null
+          payment_details?: string | null
           payment_method?: string | null
           receipt_number?: string | null
           status?: string
@@ -466,6 +562,7 @@ export type Database = {
           installment_number?: number
           late_fee?: number | null
           payment_date?: string | null
+          payment_details?: string | null
           payment_method?: string | null
           receipt_number?: string | null
           status?: string
@@ -544,6 +641,21 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      postal_codes: {
+        Row: {
+          code: string
+          id: string
+        }
+        Insert: {
+          code: string
+          id: string
+        }
+        Update: {
+          code?: string
+          id?: string
+        }
+        Relationships: []
       }
       product_history: {
         Row: {
@@ -792,6 +904,102 @@ export type Database = {
           role?: string
           updated_at?: string | null
           username?: string | null
+        }
+        Relationships: []
+      }
+      provinces: {
+        Row: {
+          created_at: string | null
+          deleted_at: string | null
+          geography_id: string | null
+          id: string
+          name_en: string | null
+          name_th: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          deleted_at?: string | null
+          geography_id?: string | null
+          id: string
+          name_en?: string | null
+          name_th: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          deleted_at?: string | null
+          geography_id?: string | null
+          id?: string
+          name_en?: string | null
+          name_th?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      sub_districts: {
+        Row: {
+          created_at: string | null
+          deleted_at: string | null
+          districts_id: string | null
+          id: string
+          name_en: string | null
+          name_th: string | null
+          updated_at: string | null
+          zip_code: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          deleted_at?: string | null
+          districts_id?: string | null
+          id: string
+          name_en?: string | null
+          name_th?: string | null
+          updated_at?: string | null
+          zip_code?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          deleted_at?: string | null
+          districts_id?: string | null
+          id?: string
+          name_en?: string | null
+          name_th?: string | null
+          updated_at?: string | null
+          zip_code?: string | null
+        }
+        Relationships: []
+      }
+      unuse_sub_districts: {
+        Row: {
+          created_at: string | null
+          deleted_at: string | null
+          districts_id: string | null
+          id: string
+          name_en: string | null
+          name_th: string
+          updated_at: string | null
+          zip_code: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          deleted_at?: string | null
+          districts_id?: string | null
+          id: string
+          name_en?: string | null
+          name_th: string
+          updated_at?: string | null
+          zip_code?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          deleted_at?: string | null
+          districts_id?: string | null
+          id?: string
+          name_en?: string | null
+          name_th?: string
+          updated_at?: string | null
+          zip_code?: string | null
         }
         Relationships: []
       }
