@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,6 +18,7 @@ interface Product {
   price: number;
   stock_quantity: number;
   category: string;
+  imageUrl?: string;
 }
 
 interface Customer {
@@ -54,7 +54,7 @@ const CashSaleManagement: React.FC = () => {
   const loadProducts = async () => {
     const { data, error } = await supabase
       .from('products')
-      .select('*')
+      .select('*, imageUrl')
       .gt('stock_quantity', 0);
     
     if (error) {
@@ -251,11 +251,25 @@ const CashSaleManagement: React.FC = () => {
                 {filteredProducts.map((product) => (
                   <div key={product.id} className="border rounded-lg p-4 hover:bg-slate-50">
                     <div className="flex justify-between items-start mb-2">
-                      <div>
+                      <div className="flex-1">
                         <h3 className="font-medium">{product.name}</h3>
                         <p className="text-sm text-slate-600">{product.code}</p>
                         <p className="text-sm text-slate-600">คงเหลือ: {product.stock_quantity}</p>
                       </div>
+                      {product.imageUrl && (
+                        <a 
+                          href={product.imageUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="flex-shrink-0" // ทำให้รูปภาพไม่ย่อขนาดเมื่อมีข้อความยาว
+                        >
+                          <img 
+                            src={product.imageUrl} 
+                            alt={product.name} 
+                            className="w-16 h-16 object-cover rounded-md ml-4" 
+                          />
+                        </a>
+                      )}
                       <Badge variant="outline">{product.category}</Badge>
                     </div>
                     <div className="flex justify-between items-center">

@@ -3,11 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Package, Plus, Search, Edit, AlertTriangle, TrendingUp, TrendingDown, Download } from 'lucide-react';
+import { Package, Plus, Search, Edit, AlertTriangle, TrendingUp, TrendingDown, Download, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -53,7 +53,9 @@ const InventoryManagement: React.FC = () => {
   const [filterCategory, setFilterCategory] = useState('all');
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [isAdjustStockOpen, setIsAdjustStockOpen] = useState(false);
+  const [isEditProductOpen, setIsEditProductOpen] = useState(false); // สถานะใหม่สำหรับ dialog แก้ไข
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null); // สถานะใหม่สำหรับสินค้าที่กำลังแก้ไข
   const [adjustmentQuantity, setAdjustmentQuantity] = useState('');
   const [adjustmentType, setAdjustmentType] = useState('in');
   const [adjustmentNotes, setAdjustmentNotes] = useState('');
@@ -70,6 +72,7 @@ const InventoryManagement: React.FC = () => {
     description: ''
   });
   const [newProductImage, setNewProductImage] = useState<File | null>(null);
+  const [editingProductImage, setEditingProductImage] = useState<File | null>(null); // สถานะใหม่สำหรับรูปภาพสินค้าที่กำลังแก้ไข
   const [exportPeriod, setExportPeriod] = useState('1month'); // สถานะใหม่สำหรับช่วงเวลาการส่งออก
 
   useEffect(() => {
@@ -77,6 +80,7 @@ const InventoryManagement: React.FC = () => {
     loadMovements();
   }, []);
 
+  // โหลดข้อมูลสินค้า
   const loadProducts = async () => {
     const { data, error } = await supabase
       .from('products')
@@ -90,6 +94,7 @@ const InventoryManagement: React.FC = () => {
     setProducts(data || []);
   };
 
+  // โหลดข้อมูลการเคลื่อนไหวของสินค้า
   const loadMovements = async () => {
     const { data, error } = await supabase
       .from('inventory_movements')
@@ -108,6 +113,7 @@ const InventoryManagement: React.FC = () => {
     setMovements(data || []);
   };
 
+  // เพิ่มสินค้าใหม่
   const addProduct = async () => {
     if (!newProduct.name || !newProduct.code || !newProduct.category || !newProduct.price) {
       toast({ title: "ข้อผิดพลาด", description: "กรุณากรอกข้อมูลที่จำเป็น", variant: "destructive" });
@@ -176,6 +182,126 @@ const InventoryManagement: React.FC = () => {
     }
   };
 
+  // แก้ไขสินค้า
+  const editProduct = async () => {
+    if (!editingProduct) return;
+
+    try {
+      let imageUrl = editingProduct.imageUrl;
+
+      if (editingProductImage) {
+        // ลบรูปภาพเก่าออกหากมีอยู่
+        if (imageUrl) {
+          // สกัด path ของไฟล์หลังจาก 'product-images/'
+          const oldFilePath = imageUrl.split('product-images/')[1]; 
+          if (oldFilePath) {
+            const { error: storageError } = await supabase.storage.from('furniture-images').remove([`product-images/${oldFilePath}`]);
+            if (storageError) {
+              console.error("ข้อผิดพลาดในการลบรูปภาพเก่าจาก Storage:", storageError.message);
+              // ไม่จำเป็นต้อง throw error ที่นี่ สามารถดำเนินการต่อไปได้
+            }
+          }
+        }
+
+        const fileExtension = editingProductImage.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExtension}`;
+        const filePath = `product-images/${fileName}`;
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('furniture-images')
+          .upload(filePath, editingProductImage, {
+            cacheControl: '3600',
+            upsert: true, // ใช้ upsert เพื่อเขียนทับหากมีไฟล์ชื่อเดียวกัน (แม้ว่าเราจะสร้างชื่อที่ไม่ซ้ำกัน)
+          });
+
+        if (uploadError) {
+          throw new Error(`ไม่สามารถอัปโหลดรูปภาพได้: ${uploadError.message}`);
+        }
+
+        const { data: publicUrlData } = supabase.storage
+          .from('furniture-images')
+          .getPublicUrl(filePath);
+        
+        imageUrl = publicUrlData?.publicUrl || null;
+      }
+
+      const { error } = await supabase
+        .from('products')
+        .update({
+          name: editingProduct.name,
+          code: editingProduct.code,
+          category: editingProduct.category,
+          price: editingProduct.price,
+          cost: editingProduct.cost || null,
+          stock_quantity: editingProduct.stock_quantity,
+          min_stock_level: editingProduct.min_stock_level,
+          brand: editingProduct.brand || null,
+          model: editingProduct.model || null,
+          description: editingProduct.description || null,
+          imageUrl: imageUrl,
+        })
+        .eq('id', editingProduct.id);
+
+      if (error) throw error;
+
+      toast({ title: "สำเร็จ", description: "แก้ไขสินค้าเรียบร้อย" });
+      setIsEditProductOpen(false);
+      setEditingProduct(null);
+      setEditingProductImage(null);
+      loadProducts();
+
+    } catch (error: any) {
+      toast({ 
+        title: "ข้อผิดพลาด", 
+        description: error.message || "ไม่สามารถแก้ไขสินค้าได้", 
+        variant: "destructive" 
+      });
+    }
+  };
+
+  // ลบสินค้า
+  const deleteProduct = async (productId: string, imageUrl: string | undefined) => {
+    if (!confirm("คุณแน่ใจหรือไม่ว่าต้องการลบสินค้าชิ้นนี้? การกระทำนี้ไม่สามารถย้อนกลับได้และจะลบการเคลื่อนไหวทั้งหมดที่เกี่ยวข้องด้วย")) {
+      return;
+    }
+
+    try {
+      // ขั้นแรก ลบรูปภาพที่เกี่ยวข้องออกจาก storage
+      if (imageUrl) {
+        const filePath = imageUrl.split('product-images/')[1]; // สกัด path หลังจาก 'product-images/'
+        if (filePath) {
+          const { error: storageError } = await supabase.storage
+            .from('furniture-images')
+            .remove([`product-images/${filePath}`]);
+
+          if (storageError) {
+            console.error("ข้อผิดพลาดในการลบรูปภาพจาก storage:", storageError.message);
+            // ไม่ต้อง throw error ที่นี่, ดำเนินการลบข้อมูลสินค้าต่อไป
+          }
+        }
+      }
+
+      // จากนั้นลบสินค้าออกจากฐานข้อมูล
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId);
+
+      if (error) throw error;
+
+      toast({ title: "สำเร็จ", description: "ลบสินค้าเรียบร้อย" });
+      loadProducts();
+      loadMovements(); // โหลดข้อมูลการเคลื่อนไหวใหม่ด้วย เนื่องจากบางรายการอาจเกี่ยวข้องกับสินค้าที่ถูกลบ
+    } catch (error: any) {
+      toast({ 
+        title: "ข้อผิดพลาด", 
+        description: error.message || "ไม่สามารถลบสินค้าได้", 
+        variant: "destructive" 
+      });
+    }
+  };
+
+  // ปรับสต็อกสินค้า
   const adjustStock = async () => {
     if (!selectedProduct || !adjustmentQuantity) {
       toast({ title: "ข้อผิดพลาด", description: "กรุณาระบุข้อมูลให้ครบถ้วน", variant: "destructive" });
@@ -234,6 +360,7 @@ const InventoryManagement: React.FC = () => {
     }
   };
 
+  // ตรวจสอบสถานะสต็อก (หมด, ใกล้หมด, ปกติ)
   const getStockStatus = (product: Product) => {
     if (product.stock_quantity === 0) {
       return <Badge className="bg-red-100 text-red-800">หมด</Badge>;
@@ -254,6 +381,7 @@ const InventoryManagement: React.FC = () => {
 
   const lowStockProducts = products.filter(p => p.stock_quantity <= p.min_stock_level);
 
+  // ส่งออกข้อมูลการเคลื่อนไหวเป็น CSV
   const exportMovementsToCsv = async () => {
     let startDate: Date;
     const endDate = new Date(); // วันที่ปัจจุบัน
@@ -601,11 +729,18 @@ const InventoryManagement: React.FC = () => {
                 {filteredProducts.map((product) => (
                   <div key={product.id} className="border rounded-lg p-4 flex items-center space-x-4">
                     {product.imageUrl && (
-                      <img 
-                        src={product.imageUrl} 
-                        alt={product.name} 
-                        className="w-20 h-20 object-cover rounded-md" 
-                      />
+                      <a 
+                        href={product.imageUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="flex-shrink-0"
+                      >
+                        <img 
+                          src={product.imageUrl} 
+                          alt={product.name} 
+                          className="w-20 h-20 object-cover rounded-md" 
+                        />
+                      </a>
                     )}
                     <div className="flex-1">
                       <div className="flex justify-between items-start mb-2">
@@ -629,17 +764,24 @@ const InventoryManagement: React.FC = () => {
                           <p className="text-slate-600">ขั้นต่ำ</p>
                           <p className="font-medium">{product.min_stock_level}</p>
                         </div>
-                        <div>
+                        <div className="flex space-x-2">
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              setSelectedProduct(product);
-                              setIsAdjustStockOpen(true);
+                              setEditingProduct({ ...product }); // สร้างสำเนาเพื่อแก้ไข
+                              setIsEditProductOpen(true);
                             }}
                           >
                             <Edit className="h-4 w-4 mr-1" />
-                            ปรับสต็อก
+                            แก้ไข
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => deleteProduct(product.id, product.imageUrl)}
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>
@@ -650,6 +792,124 @@ const InventoryManagement: React.FC = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Dialog สำหรับแก้ไขสินค้า */}
+        <Dialog open={isEditProductOpen} onOpenChange={setIsEditProductOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>แก้ไขสินค้า</DialogTitle>
+            </DialogHeader>
+            {editingProduct && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>ชื่อสินค้า *</Label>
+                  <Input
+                    value={editingProduct.name}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
+                    placeholder="ชื่อสินค้า"
+                  />
+                </div>
+                <div>
+                  <Label>รูปภาพสินค้า (เลือกใหม่)</Label>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setEditingProductImage(e.target.files ? e.target.files[0] : null)}
+                  />
+                  {editingProductImage ? (
+                    <p className="text-sm text-slate-500 mt-1">ไฟล์ที่เลือก: {editingProductImage.name}</p>
+                  ) : editingProduct.imageUrl ? (
+                    <p className="text-sm text-slate-500 mt-1">รูปภาพปัจจุบัน: <a href={editingProduct.imageUrl} target="_blank" rel="noopener noreferrer" className="text-furniture-500 underline">ดูรูปภาพ</a></p>
+                  ) : (
+                    <p className="text-sm text-slate-500 mt-1">ไม่มีรูปภาพปัจจุบัน</p>
+                  )}
+                </div>
+                <div>
+                  <Label>รหัสสินค้า *</Label>
+                  <Input
+                    value={editingProduct.code}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, code: e.target.value })}
+                    placeholder="รหัสสินค้า"
+                  />
+                </div>
+                <div>
+                  <Label>หมวดหมู่ *</Label>
+                  <Input
+                    value={editingProduct.category}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
+                    placeholder="หมวดหมู่"
+                  />
+                </div>
+                <div>
+                  <Label>ราคาขาย *</Label>
+                  <Input
+                    type="number"
+                    value={editingProduct.price}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, price: parseFloat(e.target.value) })}
+                    placeholder="ราคาขาย"
+                  />
+                </div>
+                <div>
+                  <Label>ราคาต้นทุน</Label>
+                  <Input
+                    type="number"
+                    value={editingProduct.cost || ''}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, cost: e.target.value ? parseFloat(e.target.value) : undefined })}
+                    placeholder="ราคาต้นทุน"
+                  />
+                </div>
+                <div>
+                  <Label>สต็อกคงเหลือ</Label>
+                  <Input
+                    type="number"
+                    value={editingProduct.stock_quantity}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, stock_quantity: parseInt(e.target.value) })}
+                    placeholder="สต็อกคงเหลือ"
+                    disabled // ไม่สามารถปรับสต็อกผ่านหน้าจอนี้ได้ ต้องใช้ฟังก์ชัน "ปรับสต็อก"
+                  />
+                </div>
+                <div>
+                  <Label>สต็อกขั้นต่ำ</Label>
+                  <Input
+                    type="number"
+                    value={editingProduct.min_stock_level}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, min_stock_level: parseInt(e.target.value) })}
+                    placeholder="สต็อกขั้นต่ำ"
+                  />
+                </div>
+                <div>
+                  <Label>ยี่ห้อ</Label>
+                  <Input
+                    value={editingProduct.brand || ''}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, brand: e.target.value })}
+                    placeholder="ยี่ห้อ"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Label>รุ่น</Label>
+                  <Input
+                    value={editingProduct.model || ''}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, model: e.target.value })}
+                    placeholder="รุ่น"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Label>รายละเอียด</Label>
+                  <Textarea
+                    value={editingProduct.description || ''}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
+                    placeholder="รายละเอียดสินค้า"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Button onClick={editProduct} className="w-full bg-furniture-500 hover:bg-furniture-600">
+                    บันทึกการแก้ไข
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* ประวัติการเคลื่อนไหว (ส่วนที่มีการเพิ่มฟังก์ชัน Export) */}
         <div>
