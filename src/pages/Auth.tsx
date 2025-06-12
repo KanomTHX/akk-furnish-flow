@@ -12,6 +12,7 @@ const Auth = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,7 +29,7 @@ const Auth = () => {
       if (isSignUp) {
         result = await signUp(email, password, fullName); 
       } else {
-        result = await signIn(username, password);
+        result = await signIn(loginEmail, password);
       }
 
       if (result.error) {
@@ -76,45 +77,45 @@ const Auth = () => {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {isSignUp && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-black mb-1">
-                    ชื่อ-นามสกุล
-                  </label>
-                  <Input
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    required
-                    placeholder="กรอกชื่อ-นามสกุล"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-black mb-1">
-                    อีเมล
-                  </label>
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    placeholder="กรอกอีเมล"
-                  />
-                </div>
-              </>
+              <div>
+                <label className="block text-sm font-medium text-black mb-1">
+                  ชื่อ-นามสกุล
+                </label>
+                <Input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                  placeholder="กรอกชื่อ-นามสกุล"
+                />
+              </div>
             )}
             <div>
               <label className="block text-sm font-medium text-black mb-1">
-                ชื่อผู้ใช้
+                อีเมล
               </label>
               <Input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                type="email"
+                value={isSignUp ? email : loginEmail}
+                onChange={(e) => isSignUp ? setEmail(e.target.value) : setLoginEmail(e.target.value)}
                 required
-                placeholder="กรอกชื่อผู้ใช้"
+                placeholder="กรอกอีเมล"
               />
             </div>
+            {isSignUp && (
+              <div>
+                <label className="block text-sm font-medium text-black mb-1">
+                  ชื่อผู้ใช้
+                </label>
+                <Input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  placeholder="กรอกชื่อผู้ใช้"
+                />
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-black mb-1">
                 รหัสผ่าน

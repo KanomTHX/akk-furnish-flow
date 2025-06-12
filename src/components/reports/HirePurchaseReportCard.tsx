@@ -14,9 +14,9 @@ const HirePurchaseReportCard: React.FC<HirePurchaseReportCardProps> = ({ hirePur
       <Card>
         <CardContent className="pt-6">
           <div className="text-center">
-            <p className="text-sm text-slate-600">สัญญาทั้งหมด</p>
-            <p className="text-3xl font-bold text-furniture-600">{hirePurchaseReport.total_contracts}</p>
-            <p className="text-sm text-slate-500">สัญญา</p>
+            <p className="text-sm text-black">สัญญาทั้งหมด</p>
+            <p className="text-3xl font-bold text-red-600">{hirePurchaseReport.total_contracts}</p>
+            <p className="text-sm text-black">สัญญา</p>
           </div>
         </CardContent>
       </Card>
@@ -24,7 +24,7 @@ const HirePurchaseReportCard: React.FC<HirePurchaseReportCardProps> = ({ hirePur
       <Card>
         <CardContent className="pt-6">
           <div className="text-center">
-            <p className="text-sm text-slate-600">มูลค่ารวม</p>
+            <p className="text-sm text-black">มูลค่ารวม</p>
             <p className="text-3xl font-bold text-green-600">
               {formatCurrency(hirePurchaseReport.total_amount)}
             </p>
@@ -35,9 +35,9 @@ const HirePurchaseReportCard: React.FC<HirePurchaseReportCardProps> = ({ hirePur
       <Card>
         <CardContent className="pt-6">
           <div className="text-center">
-            <p className="text-sm text-slate-600">สัญญาที่ใช้งาน</p>
+            <p className="text-sm text-black">สัญญาที่ใช้งาน</p>
             <p className="text-3xl font-bold text-blue-600">{hirePurchaseReport.active_contracts}</p>
-            <p className="text-sm text-slate-500">สัญญา</p>
+            <p className="text-sm text-black">สัญญา</p>
           </div>
         </CardContent>
       </Card>
@@ -45,9 +45,9 @@ const HirePurchaseReportCard: React.FC<HirePurchaseReportCardProps> = ({ hirePur
       <Card>
         <CardContent className="pt-6">
           <div className="text-center">
-            <p className="text-sm text-slate-600">งวดเกินกำหนด</p>
+            <p className="text-sm text-black">งวดเกินกำหนด</p>
             <p className="text-3xl font-bold text-red-600">{hirePurchaseReport.overdue_payments}</p>
-            <p className="text-sm text-slate-500">งวด</p>
+            <p className="text-sm text-black">งวด</p>
           </div>
         </CardContent>
       </Card>
@@ -55,7 +55,7 @@ const HirePurchaseReportCard: React.FC<HirePurchaseReportCardProps> = ({ hirePur
       <Card>
         <CardContent className="pt-6">
           <div className="text-center">
-            <p className="text-sm text-slate-600">อัตราการชำระ</p>
+            <p className="text-sm text-black">อัตราการชำระ</p>
             <p className="text-3xl font-bold text-purple-600">
               {hirePurchaseReport.collection_rate.toFixed(1)}%
             </p>
