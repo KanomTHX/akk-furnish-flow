@@ -8,7 +8,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signIn: (username: string, password: string) => Promise<{ error: any }>;
-  signUp: (username: string, password: string, fullName: string) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, fullName: string, username: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   userProfile: any;
 }
@@ -81,22 +81,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signUp = async (username: string, password: string, fullName: string) => {
-    // For signup, we need to use email format, so we'll use username@system.local format
-    const email = `${username}@system.local`;
-    
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-          username: username,
+  const signUp = async (email: string, password: string, fullName: string, username: string) => {
+    try {
+      // Check if username already exists
+      const { data: existingUser } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('username', username)
+        .single();
+
+      if (existingUser) {
+        return { error: { message: 'ชื่อผู้ใช้นี้ถูกใช้แล้ว' } };
+      }
+
+      // Sign up with email and password
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+            username: username,
+          },
+          emailRedirectTo: `${window.location.origin}/`,
         },
-        emailRedirectTo: `${window.location.origin}/`,
-      },
-    });
-    return { error };
+      });
+      
+      return { error };
+    } catch (error) {
+      return { error: { message: 'เกิดข้อผิดพลาดในการสมัครสมาชิก' } };
+    }
   };
 
   const signOut = async () => {

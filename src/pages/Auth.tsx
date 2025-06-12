@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 const Auth = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,7 +26,7 @@ const Auth = () => {
     try {
       let result;
       if (isSignUp) {
-        result = await signUp(username, password, fullName);
+        result = await signUp(email, password, fullName, username);
       } else {
         result = await signIn(username, password);
       }
@@ -85,6 +86,20 @@ const Auth = () => {
                   onChange={(e) => setFullName(e.target.value)}
                   required
                   placeholder="กรอกชื่อ-นามสกุล"
+                />
+              </div>
+            )}
+            {isSignUp && (
+              <div>
+                <label className="block text-sm font-medium text-black mb-1">
+                  อีเมล
+                </label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  placeholder="กรอกอีเมล"
                 />
               </div>
             )}
