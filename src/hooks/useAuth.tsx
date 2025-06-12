@@ -1,4 +1,3 @@
-
 import { useState, useEffect, createContext, useContext } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
@@ -7,7 +6,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signIn: (username: string, password: string) => Promise<{ error: any }>;
+  signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string, fullName: string, username: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   userProfile: any;
@@ -65,41 +64,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signIn = async (username: string, password: string) => {
+  const signIn = async (email: string, password: string) => {
     try {
-      console.log('Attempting to sign in with username:', username);
-      
-      // First, find the user by username to get their email
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('email, id, full_name, role')
-        .eq('username', username)
-        .maybeSingle();
+      console.log('Attempting to sign in with email:', email);
 
-      console.log('Profile lookup result:', profile, profileError);
-
-      if (profileError) {
-        console.error('Profile lookup error:', profileError);
-        return { error: { message: 'เกิดข้อผิดพลาดในการค้นหาผู้ใช้' } };
-      }
-
-      if (!profile) {
-        console.log('No profile found for username:', username);
-        return { error: { message: 'ไม่พบชื่อผู้ใช้นี้ในระบบ' } };
-      }
-
-      console.log('Found profile, attempting to sign in with email:', profile.email);
-
-      // Then sign in with email and password
+      // Sign in directly with email and password
       const { error } = await supabase.auth.signInWithPassword({
-        email: profile.email,
+        email,
         password,
       });
       
       if (error) {
         console.error('Sign in error:', error);
         if (error.message.includes('Invalid login credentials')) {
-          return { error: { message: 'รหัสผ่านไม่ถูกต้อง' } };
+          return { error: { message: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' } };
         }
         return { error: { message: error.message } };
       }

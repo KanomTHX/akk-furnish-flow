@@ -12,6 +12,7 @@ const Auth = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,7 +29,7 @@ const Auth = () => {
       if (isSignUp) {
         result = await signUp(email, password, fullName, username);
       } else {
-        result = await signIn(username, password);
+        result = await signIn(loginEmail, password);
       }
 
       if (result.error) {
@@ -89,32 +90,32 @@ const Auth = () => {
                 />
               </div>
             )}
+            <div>
+              <label className="block text-sm font-medium text-black mb-1">
+                อีเมล
+              </label>
+              <Input
+                type="email"
+                value={isSignUp ? email : loginEmail}
+                onChange={(e) => isSignUp ? setEmail(e.target.value) : setLoginEmail(e.target.value)}
+                required
+                placeholder="กรอกอีเมล"
+              />
+            </div>
             {isSignUp && (
               <div>
                 <label className="block text-sm font-medium text-black mb-1">
-                  อีเมล
+                  ชื่อผู้ใช้
                 </label>
                 <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   required
-                  placeholder="กรอกอีเมล"
+                  placeholder="กรอกชื่อผู้ใช้"
                 />
               </div>
             )}
-            <div>
-              <label className="block text-sm font-medium text-black mb-1">
-                ชื่อผู้ใช้
-              </label>
-              <Input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                placeholder="กรอกชื่อผู้ใช้"
-              />
-            </div>
             <div>
               <label className="block text-sm font-medium text-black mb-1">
                 รหัสผ่าน
