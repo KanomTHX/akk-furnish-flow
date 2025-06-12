@@ -6,8 +6,15 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signUp: (email: string, password: string, fullName: string, username: string) => Promise<{ error: any }>;
+  signIn: (identifier: string, password: string) => Promise<{ error: any }>;
+  signUp: (
+    email: string,
+    password: string,
+    fullName: string,
+    username: string,
+    branchId: string, // *** เพิ่มตรงนี้: UUID ของสาขา
+    role?: string      // *** เพิ่มตรงนี้: Role (เป็น optional ถ้ามี default หรือไม่ใช้)
+  ) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   userProfile: any;
 }
@@ -64,103 +71,129 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signIn = async (email: string, password: string) => {
-    try {
-      console.log('Attempting to sign in with email:', email);
+  const signIn = async (identifier: string, password: string) => { // *** แก้ไข signature ตรงนี้ ***
+    let targetEmail = identifier; // สมมติว่าเป็น email ไว้ก่อน
 
-      // Sign in directly with email and password
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      
-      if (error) {
-        console.error('Sign in error:', error);
-        if (error.message.includes('Invalid login credentials')) {
-          return { error: { message: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' } };
-        }
-        return { error: { message: error.message } };
-      }
+    // 1. ตรวจสอบว่า identifier เป็น email หรือไม่
+    const isEmail = identifier.includes('@');
 
-      console.log('Sign in successful');
-      return { error: null };
-    } catch (error) {
-      console.error('Sign in catch error:', error);
-      return { error: { message: 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ' } };
-    }
-  };
-
-  const signUp = async (email: string, password: string, fullName: string, username: string) => {
-    try {
-      console.log('Attempting to sign up with:', { email, username, fullName });
-
-      // Check if username already exists
-      const { data: existingUser } = await supabase
-        .from('profiles')
-        .select('username')
-        .eq('username', username)
-        .maybeSingle();
-
-      if (existingUser) {
-        return { error: { message: 'ชื่อผู้ใช้นี้ถูกใช้แล้ว' } };
-      }
-
-      // Check if email already exists
-      const { data: existingEmail } = await supabase
-        .from('profiles')
+    if (!isEmail) {
+      // 2. ถ้าไม่ใช่ email แสดงว่าเป็น username, ต้องไปค้นหา email จากตาราง public.users
+      const { data: profileData, error: profileError } = await supabase
+        .from('users') // หรือ 'profiles' ตามชื่อตารางที่คุณใช้
         .select('email')
-        .eq('email', email)
-        .maybeSingle();
+        .eq('username', identifier)
+        .single(); // ใช้ single เพื่อดึงมาแค่ 1 แถว
 
-      if (existingEmail) {
-        return { error: { message: 'อีเมลนี้ถูกใช้แล้ว' } };
+      if (profileError || !profileData) {
+        // หากหา username ไม่เจอ หรือมี Error ในการค้นหา
+        return { error: { message: 'ชื่อผู้ใช้หรืออีเมลไม่ถูกต้อง' } };
       }
-
-      // Sign up with email and password
-      const { data: authData, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-            username: username,
-          },
-          emailRedirectTo: `${window.location.origin}/`,
-        },
-      });
-      
-      console.log('Sign up result:', authData, error);
-
-      if (error) {
-        return { error: { message: error.message } };
-      }
-
-      // If signup was successful and we have a user, insert profile data
-      if (authData.user) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert([
-            {
-              id: authData.user.id,
-              email: email,
-              full_name: fullName,
-              username: username,
-              role: 'sales', // default role
-            }
-          ]);
-
-        if (profileError) {
-          console.error('Profile creation error:', profileError);
-          // Don't return error here as the user was created successfully
-        }
-      }
-      
-      return { error: null };
-    } catch (error) {
-      console.error('Sign up catch error:', error);
-      return { error: { message: 'เกิดข้อผิดพลาดในการสมัครสมาชิก' } };
+      targetEmail = profileData.email; // ได้ email จาก username แล้ว
     }
+
+    // 3. ใช้ targetEmail ที่ได้มา (ไม่ว่าจะเป็น original email หรือ email จาก username) ในการ signIn
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: targetEmail,
+      password: password,
+    });
+
+    if (error) {
+      console.error('Sign in error:', error);
+      return { error: { message: error.message } };
+    }
+
+    // อัปเดต session และ user state
+    if (data.session && data.user) {
+      setSession(data.session);
+      setUser(data.user);
+      // โหลด userProfile ด้วย (ถ้าคุณต้องการโหลดหลัง Login)
+      const { data: userProfileData, error: userProfileError } = await supabase
+        .from('users') // หรือ 'profiles'
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+      
+      if (userProfileError) {
+        console.error('Error fetching user profile after sign in:', userProfileError);
+        setUserProfile(null);
+      } else {
+        setUserProfile(userProfileData);
+      }
+    } else {
+      setSession(null);
+      setUser(null);
+      setUserProfile(null);
+      return { error: { message: 'เข้าสู่ระบบไม่สำเร็จ กรุณาตรวจสอบชื่อผู้ใช้/อีเมลและรหัสผ่าน' } };
+    }
+    
+    return { error: null };
   };
+
+  const signUp = async (
+  email: string,
+  password: string,
+  fullName: string,
+  username: string,
+  // เพิ่ม parameter สำหรับ branchId และ role ที่จะใช้ตอนสมัคร
+  branchId: string, // สมมติว่าเป็น string ที่เก็บ UUID ของสาขา
+  role: string = 'staff' // กำหนด default role หรือให้เลือกจาก UI
+) => {
+  try {
+    console.log('Attempting to sign up with:', { email, username, fullName, branchId, role });
+
+
+    const { data: existingUser } = await supabase
+      .from('users') // หรือ 'profiles' ตามชื่อตารางที่คุณใช้
+      .select('username')
+      .eq('username', username)
+      .maybeSingle();
+
+    if (existingUser) {
+      return { error: { message: 'ชื่อผู้ใช้นี้ถูกใช้แล้ว' } };
+    }
+
+    const { data: existingEmail } = await supabase
+      .from('users')
+      .select('email')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (existingEmail) {
+      return { error: { message: 'อีเมลนี้ถูกใช้แล้ว' } };
+    }
+    // --- สิ้นสุดการตรวจสอบ Username/Email ---
+
+
+    // Sign up with email and password
+    const { data: authData, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+          username: username,
+          branch_id: branchId, // *** เพิ่มตรงนี้: ส่ง branch_id ไปให้ Trigger ***
+          user_role: role,     // *** เพิ่มตรงนี้: ส่ง role ไปให้ Trigger (user_role คือชื่อที่ Trigger ใช้) ***
+        },
+        emailRedirectTo: `${window.location.origin}/`,
+      },
+    });
+
+    console.log('Sign up result:', authData, error);
+
+    if (error) {
+      // อาจเป็น error ที่เกี่ยวกับ auth เช่น email/password ไม่ถูกต้อง
+      return { error: { message: error.message } };
+    }
+
+    return { error: null };
+
+  } catch (error) {
+    console.error('Sign up catch error:', error);
+    return { error: { message: 'เกิดข้อผิดพลาดในการสมัครสมาชิก' } };
+  }
+};
 
   const signOut = async () => {
     await supabase.auth.signOut();
