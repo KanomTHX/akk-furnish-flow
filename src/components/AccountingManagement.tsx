@@ -22,7 +22,7 @@ interface Transaction {
   reference_type?: string;
   reference_id?: string;
   branch_id?: string;
-  employee_name?: string; // <--- **(สำคัญ)** ตรวจสอบให้แน่ใจว่ามีฟิลด์นี้อยู่
+  employee_name?: string;
 }
 
 interface Summary {
@@ -62,9 +62,12 @@ const AccountingManagement: React.FC = () => {
           endDate = today.toISOString().split('T')[0];
           break;
         case 'thisWeek':
-          const firstDayOfWeek = new Date(today.setDate(today.getDate() - today.getDay()));
+          const firstDayOfWeek = new Date(today);
+          firstDayOfWeek.setDate(today.getDate() - today.getDay());
           startDate = firstDayOfWeek.toISOString().split('T')[0];
-          const lastDayOfWeek = new Date(today.setDate(today.getDate() - today.getDay() + 6));
+          
+          const lastDayOfWeek = new Date(firstDayOfWeek);
+          lastDayOfWeek.setDate(firstDayOfWeek.getDate() + 6);
           endDate = lastDayOfWeek.toISOString().split('T')[0];
           break;
         case 'thisMonth':
@@ -80,11 +83,11 @@ const AccountingManagement: React.FC = () => {
           endDate = undefined;
       }
 
-      // Fetch cash sales พร้อมข้อมูลพนักงาน
-      // **(สำคัญ)** ตรวจสอบการ select และการเข้าถึงข้อมูลที่ join
+      // Fetch cash sales
+      // ใช้ sales_person_id!inner(full_name) ตามที่พบใน Foreign Keys ของ cash_sales
       let { data: cashSales, error: cashSalesError } = await supabase
         .from('cash_sales')
-        .select('*, users(full_name)') // ตรวจสอบให้แน่ใจว่า 'users' คือชื่อตาราง และ 'full_name' คือชื่อคอลัมน์
+        .select('*, sales_person_id!inner(full_name)') 
         .gte('sale_date', startDate || '1970-01-01')
         .lte('sale_date', endDate || '2999-12-31');
 
@@ -99,14 +102,17 @@ const AccountingManagement: React.FC = () => {
         date: sale.sale_date,
         reference_type: 'cash_sale',
         reference_id: sale.id,
-        employee_name: sale.users?.full_name, // <--- **(สำคัญ)** ตรวจสอบการเข้าถึง: sale.users อาจเป็น object หรือ array ขึ้นอยู่กับการตั้งค่า Supabase
+        // ใช้ sales_person_id เพื่อดึงชื่อพนักงานขาย
+        employee_name: sale.sales_person_id?.full_name, 
       }));
 
-      // Fetch hire-purchase payments พร้อมข้อมูลพนักงาน
-      // **(สำคัญ)** ตรวจสอบการ select และการเข้าถึงข้อมูลที่ join
+      // Fetch hire-purchase payments
+      // *** สำคัญ: คุณยังต้องตรวจสอบชื่อคอลัมน์ Foreign Key ที่ถูกต้อง ***
+      // *** ในตาราง 'hire_purchase_payments' ที่เชื่อมโยงกับตาราง 'profiles' ด้วยตัวคุณเอง ***
+      // *** ในตัวอย่างนี้ ผมยังคงใช้ 'user_id' เป็น placeholder ***
       let { data: hirePurchasePayments, error: hirePurchasePaymentsError } = await supabase
         .from('hire_purchase_payments')
-        .select('*, users(full_name)') // ตรวจสอบให้แน่ใจว่า 'users' คือชื่อตาราง และ 'full_name' คือชื่อคอลัมน์
+        .select('*, user_id!inner(full_name)') // <--- เปลี่ยน 'user_id' ตรงนี้ให้เป็นชื่อคอลัมน์ FK ที่ถูกต้องของคุณ (เช่น 'customer_id' หรือ 'employee_id')
         .eq('status', 'paid')
         .gte('payment_date', startDate || '1970-01-01')
         .lte('payment_date', endDate || '2999-12-31');
@@ -122,14 +128,14 @@ const AccountingManagement: React.FC = () => {
         date: payment.payment_date || new Date().toISOString().split('T')[0],
         reference_type: 'hire_purchase_payment',
         reference_id: payment.id,
-        employee_name: payment.users?.full_name, // <--- **(สำคัญ)** ตรวจสอบการเข้าถึง
+        employee_name: payment.user_id?.full_name, // <--- เปลี่ยนตรงนี้ให้ตรงกับ FK ที่คุณใช้ (เช่น payment.customer_id?.full_name)
       }));
 
-      // Fetch general expenses พร้อมข้อมูลพนักงาน
-      // **(สำคัญ)** ตรวจสอบการ select และการเข้าถึงข้อมูลที่ join
+      // Fetch general expenses
+      // ใช้ created_by!inner(full_name) ตามที่พบใน Foreign Keys ของ branch_expenses
       let { data: branchExpenses, error: branchExpensesError } = await supabase
         .from('branch_expenses')
-        .select('*, users(full_name)') // ตรวจสอบให้แน่ใจว่า 'users' คือชื่อตาราง และ 'full_name' คือชื่อคอลัมน์
+        .select('*, created_by!inner(full_name)') // <--- แก้ไขตรงนี้: ใช้ 'created_by'
         .gte('expense_date', startDate || '1970-01-01')
         .lte('expense_date', endDate || '2999-12-31');
 
@@ -144,7 +150,7 @@ const AccountingManagement: React.FC = () => {
         date: expense.expense_date,
         reference_type: 'branch_expense',
         reference_id: expense.id,
-        employee_name: expense.users?.full_name, // <--- **(สำคัญ)** ตรวจสอบการเข้าถึง
+        employee_name: expense.created_by?.full_name, // <--- แก้ไขตรงนี้: ใช้ 'expense.created_by?.full_name'
       }));
 
       const allTransactions = [...cashSaleTransactions, ...hirePurchaseTransactions, ...expenseTransactions]
@@ -201,7 +207,6 @@ const AccountingManagement: React.FC = () => {
   };
 
   const generateCsv = (data: Transaction[]) => {
-    // **(สำคัญ)** เพิ่ม 'ผู้ทำรายการ' ในส่วน header และ row
     const headers = ["วันที่", "ประเภท", "หมวดหมู่", "รายละเอียด", "จำนวนเงิน (฿)", "ผู้ทำรายการ"];
     const rows = data.map(t => [
       new Date(t.date).toLocaleDateString('th-TH'),
@@ -209,7 +214,7 @@ const AccountingManagement: React.FC = () => {
       t.category,
       t.description,
       t.amount.toFixed(2),
-      t.employee_name || 'N/A' // <--- **(สำคัญ)** ดึง employee_name มาใช้
+      t.employee_name || 'N/A'
     ]);
     const csvContent = [
       headers.join(','),
@@ -233,17 +238,16 @@ const AccountingManagement: React.FC = () => {
       const end = exportEndDate.toISOString().split('T')[0];
 
       // Fetch all data for the selected period for export
-      // **(สำคัญ)** ตรวจสอบการ select และการเข้าถึงข้อมูลที่ join ในส่วน Export
       let { data: cashSales, error: cashSalesError } = await supabase
         .from('cash_sales')
-        .select('*, users(full_name)')
+        .select('*, sales_person_id!inner(full_name)') 
         .gte('sale_date', start)
         .lte('sale_date', end);
       if (cashSalesError) throw cashSalesError;
 
       let { data: hirePurchasePayments, error: hirePurchasePaymentsError } = await supabase
         .from('hire_purchase_payments')
-        .select('*, users(full_name)')
+        .select('*, user_id!inner(full_name)') // <--- คุณยังต้องตรวจสอบชื่อคอลัมน์ FK ที่นี่ด้วยตัวเอง
         .eq('status', 'paid')
         .gte('payment_date', start)
         .lte('payment_date', end);
@@ -251,7 +255,7 @@ const AccountingManagement: React.FC = () => {
 
       let { data: branchExpenses, error: branchExpensesError } = await supabase
         .from('branch_expenses')
-        .select('*, users(full_name)')
+        .select('*, created_by!inner(full_name)') // <--- แก้ไขตรงนี้
         .gte('expense_date', start)
         .lte('expense_date', end);
       if (branchExpensesError) throw branchExpensesError;
@@ -265,7 +269,7 @@ const AccountingManagement: React.FC = () => {
         date: sale.sale_date,
         reference_type: 'cash_sale',
         reference_id: sale.id,
-        employee_name: sale.users?.full_name,
+        employee_name: sale.sales_person_id?.full_name,
       }));
 
       const hirePurchaseTransactions: Transaction[] = (hirePurchasePayments || []).map((payment: any) => ({
@@ -277,7 +281,7 @@ const AccountingManagement: React.FC = () => {
         date: payment.payment_date || new Date().toISOString().split('T')[0],
         reference_type: 'hire_purchase_payment',
         reference_id: payment.id,
-        employee_name: payment.users?.full_name,
+        employee_name: payment.user_id?.full_name, // <--- ใช้ตามชื่อคอลัมน์ FK ที่ถูกต้องของคุณ
       }));
 
       const expenseTransactions: Transaction[] = (branchExpenses || []).map((expense: any) => ({
@@ -289,7 +293,7 @@ const AccountingManagement: React.FC = () => {
         date: expense.expense_date,
         reference_type: 'branch_expense',
         reference_id: expense.id,
-        employee_name: expense.users?.full_name,
+        employee_name: expense.created_by?.full_name, // <--- ใช้ตามชื่อคอลัมน์ FK ที่ถูกต้องของคุณ
       }));
 
       const allTransactionsForExport = [...cashSaleTransactions, ...hirePurchaseTransactions, ...expenseTransactions]
@@ -472,7 +476,7 @@ const AccountingManagement: React.FC = () => {
                         <span className="text-sm text-slate-600">
                           {new Date(transaction.date).toLocaleDateString('th-TH')}
                         </span>
-                        {/* **(สำคัญ)** เพิ่มส่วนนี้เพื่อแสดงชื่อพนักงาน */}
+                        {/* ส่วนนี้จะแสดงชื่อพนักงาน */}
                         {transaction.employee_name && (
                           <span className="text-sm text-slate-500">
                             (โดย: {transaction.employee_name})
@@ -497,7 +501,7 @@ const AccountingManagement: React.FC = () => {
       <AddExpenseModal
         isOpen={isAddExpenseModalOpen}
         onClose={() => setIsAddExpenseModalOpen(false)}
-        onExpenseAdded={loadAccountingData} // ตรวจสอบให้แน่ใจว่าเรียก loadAccountingData หลังเพิ่มข้อมูล
+        onExpenseAdded={loadAccountingData}
       />
     </div>
   );

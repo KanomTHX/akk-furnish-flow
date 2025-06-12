@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,6 +35,7 @@ interface Payment {
   status: string;
   payment_date?: string;
   payment_details?: string;
+  proof_url?: string; // เพิ่ม field สำหรับเก็บ URL รูปภาพหลักฐาน
 }
 
 const HirePurchaseManagement: React.FC = () => {
@@ -49,6 +49,7 @@ const HirePurchaseManagement: React.FC = () => {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
   const [paymentDetails, setPaymentDetails] = useState('');
+  const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null); // เพิ่ม state สำหรับไฟล์รูปภาพ
 
   useEffect(() => {
     loadContracts();
@@ -89,6 +90,7 @@ const HirePurchaseManagement: React.FC = () => {
     loadPayments(contract.id);
     setPaymentAmount('');
     setPaymentDetails('');
+    setPaymentProofFile(null); // เคลียร์ไฟล์เมื่อเปลี่ยนสัญญา
   };
 
   const processPayment = async (paymentId: string) => {
@@ -97,9 +99,34 @@ const HirePurchaseManagement: React.FC = () => {
       return;
     }
 
+    if (!paymentProofFile) { // ตรวจสอบว่ามีไฟล์แนบหรือไม่
+      toast({ title: "ข้อผิดพลาด", description: "กรุณาแนบรูปภาพหลักฐานการชำระเงิน", variant: "destructive" });
+      return;
+    }
+
     setIsProcessingPayment(true);
     
+    let publicUrl = '';
     try {
+      // 1. อัปโหลดไฟล์ไปยัง Supabase Storage
+      const fileExtension = paymentProofFile.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExtension}`; // สร้างชื่อไฟล์ที่ไม่ซ้ำกัน
+      const filePath = `paymentproofs/${fileName}`; // กำหนด path ใน bucket
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('paymentproofs') // ใช้ bucket ชื่อ 'paymentproofs'
+        .upload(filePath, paymentProofFile, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) throw uploadError;
+
+      publicUrl = supabase.storage
+        .from('paymentproofs')
+        .getPublicUrl(filePath).data.publicUrl; // รับ Public URL
+
+      // 2. อัปเดตข้อมูลการชำระเงินในฐานข้อมูล
       const amount = parseFloat(paymentAmount);
       const payment = payments.find(p => p.id === paymentId);
       
@@ -119,7 +146,8 @@ const HirePurchaseManagement: React.FC = () => {
           payment_method: paymentMethod,
           payment_details: paymentDetails,
           status: isFullyPaid ? 'paid' : 'partial',
-          cashier_id: userProfile?.id
+          cashier_id: userProfile?.id,
+          proof_url: publicUrl, // เพิ่ม field สำหรับเก็บ URL รูปภาพ
         })
         .eq('id', paymentId);
 
@@ -144,6 +172,7 @@ const HirePurchaseManagement: React.FC = () => {
 
       setPaymentAmount('');
       setPaymentDetails('');
+      setPaymentProofFile(null); // เคลียร์ไฟล์หลังจากอัปโหลดสำเร็จ
       loadPayments(selectedContract!.id);
       loadContracts();
 
@@ -153,6 +182,7 @@ const HirePurchaseManagement: React.FC = () => {
         description: error.message || "ไม่สามารถบันทึกการชำระได้", 
         variant: "destructive" 
       });
+      console.error("Payment processing error:", error);
     } finally {
       setIsProcessingPayment(false);
     }
@@ -275,6 +305,11 @@ const HirePurchaseManagement: React.FC = () => {
                           <p className="text-sm text-black">
                             กำหนดชำระ: {new Date(payment.due_date).toLocaleDateString('th-TH')}
                           </p>
+                          {payment.proof_url && ( // แสดงรูปภาพหลักฐานถ้ามี
+                            <a href={payment.proof_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline text-xs mt-1 block">
+                              ดูหลักฐานการชำระ
+                            </a>
+                          )}
                         </div>
                         {getPaymentStatusBadge(payment.status)}
                       </div>
@@ -313,10 +348,17 @@ const HirePurchaseManagement: React.FC = () => {
                                 </SelectContent>
                               </Select>
                             </div>
+                            {/* Input สำหรับแนบไฟล์รูปภาพ */}
+                            <Input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => setPaymentProofFile(e.target.files ? e.target.files[0] : null)}
+                              className="mt-2"
+                            />
                             <Button
                               size="sm"
                               onClick={() => processPayment(payment.id)}
-                              disabled={isProcessingPayment}
+                              disabled={isProcessingPayment || !paymentProofFile} // ปิดการใช้งานหากไม่มีไฟล์
                               className="w-full bg-furniture-500 hover:bg-furniture-600"
                             >
                               <DollarSign className="h-4 w-4 mr-2" />

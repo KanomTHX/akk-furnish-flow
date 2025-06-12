@@ -2,6 +2,16 @@ import { useState, useEffect, createContext, useContext } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
+interface UserProfile {
+  id: string;
+  email: string;
+  full_name?: string;
+  username?: string;
+  role?: string;
+  branch_id?: string; // เพิ่ม branch_id ตรงนี้ เพื่อให้ TypeScript รู้จัก
+  // เพิ่มฟิลด์อื่นๆ ที่คุณมีในตาราง profiles
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
@@ -9,7 +19,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string, fullName: string, username: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
-  userProfile: any;
+  userProfile: UserProfile | null; // เปลี่ยน type ของ userProfile เป็น UserProfile
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -18,7 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null); // กำหนด type
 
   useEffect(() => {
     // Set up auth state listener
@@ -30,22 +40,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         if (session?.user) {
           // Fetch user profile
-          setTimeout(async () => {
-            try {
-              const { data: profile, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', session.user.id)
-                .single();
-              
-              console.log('Profile fetch result:', profile, error);
-              if (profile) {
-                setUserProfile(profile);
-              }
-            } catch (err) {
-              console.error('Error fetching profile:', err);
+          // ไม่ต้องใช้ setTimeout เพราะ onAuthStateChange จะทำงานหลังจาก session ถูกตั้งค่าแล้ว
+          try {
+            const { data: profile, error } = await supabase
+              .from('profiles')
+              .select('*') // selects all columns, including branch_id
+              .eq('id', session.user.id)
+              .single();
+            
+            console.log('Profile fetch result:', profile, error);
+            if (profile) {
+              setUserProfile(profile as UserProfile); // Cast to UserProfile
+            } else {
+              setUserProfile(null);
             }
-          }, 0);
+          } catch (err) {
+            console.error('Error fetching profile:', err);
+            setUserProfile(null);
+          }
         } else {
           setUserProfile(null);
         }
@@ -54,10 +66,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     );
 
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Check for existing session on initial load
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+
+      if (session?.user) {
+        try {
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          
+          if (profile) {
+            setUserProfile(profile as UserProfile);
+          } else {
+            setUserProfile(null);
+          }
+        } catch (err) {
+          console.error('Error fetching initial profile:', err);
+          setUserProfile(null);
+        }
+      } else {
+        setUserProfile(null);
+      }
       setLoading(false);
     });
 
@@ -68,7 +101,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log('Attempting to sign in with email:', email);
 
-      // Sign in directly with email and password
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -105,7 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error: { message: 'ชื่อผู้ใช้นี้ถูกใช้แล้ว' } };
       }
 
-      // Check if email already exists
+      // Check if email already exists in profiles table
       const { data: existingEmail } = await supabase
         .from('profiles')
         .select('email')
@@ -146,12 +178,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               full_name: fullName,
               username: username,
               role: 'sales', // default role
+              // หากต้องการกำหนด branch_id ตอนสมัครสมาชิก ให้เพิ่มตรงนี้
+              // branch_id: 'your_default_branch_id',
             }
           ]);
 
         if (profileError) {
           console.error('Profile creation error:', profileError);
           // Don't return error here as the user was created successfully
+          // but log it so we know profile creation failed
         }
       }
       
