@@ -26,86 +26,61 @@ const tabs = [
 
 const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => {
   const { userProfile, signOut } = useAuth();
-  const [currentDateTime, setCurrentDateTime] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentDateTime(new Date());
-    }, 1000);
-
-    return () => {
-      clearInterval(timer);
-    };
+      setCurrentTime(new Date());
+    }, 1000); // อัปเดตทุกวินาที
+    return () => clearInterval(timer);
   }, []);
 
-  const handleSignOut = async () => {
-    await signOut();
+  const formatTime = (date: Date) => {
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    return `${hours}:${minutes}:${seconds}`;
   };
 
-  const formatDateTime = (date: Date) => {
+  const formatDate = (date: Date) => {
     const options: Intl.DateTimeFormatOptions = {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      timeZone: 'Asia/Bangkok'
     };
     return date.toLocaleDateString('th-TH', options);
   };
 
   return (
-    <div className="min-h-screen bg-neutral-100">
+    <div className="min-h-screen bg-gradient-to-br from-furniture-50 to-furniture-100 flex flex-col">
       {/* Header */}
-      <header className="bg-white border-b border-neutral-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              {/* Logo */}
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-gray-700 to-gray-900 rounded-lg flex items-center justify-center">
-                  <Store className="h-6 w-6 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-xl font-bold text-gray-900">AKK Sell and Service</h1>
-                  <p className="text-sm text-gray-700">ระบบขายและเช่าซื้อเฟอร์นิเจอร์</p>
-                </div>
-              </div>
-            </div>
+      <header className="bg-white shadow-sm z-10 sticky top-0">
+        <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+          {/* Logo and App Name */}
+          <div className="flex items-center space-x-3">
+            <Store className="h-8 w-8 text-furniture-600" />
+            <span className="text-2xl font-bold text-gray-900">Furniture POS</span>
+          </div>
 
-            <div className="flex items-center space-x-4">
-              <div className="text-sm text-gray-800">
-                ยินดีต้อนรับ, <span className="font-medium text-gray-900">{userProfile?.full_name}</span>
-                <div className="text-xs text-gray-600">
-                  {userProfile?.role === 'admin' && 'แอดมิน'}
-                  {userProfile?.role === 'sales' && 'พนักงานขาย'}
-                  {userProfile?.role === 'cashier' && 'พนักงานเก็บเงิน'}
-                  {userProfile?.role === 'manager' && 'ผู้จัดการ'} {/* <-- เพิ่มส่วนนี้ให้สมบูรณ์ */}
-                  {/* เพิ่มบทบาทอื่นๆ ที่นี่ตามต้องการ */}
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-sm text-gray-700">{formatDateTime(currentDateTime)}</div>
-                <div className="text-xs text-gray-500">
-                  <span className="font-medium">สาขา:</span> {userProfile?.branch_name || 'ไม่ระบุ'}
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-                onClick={() => onTabChange('settings')}
-              >
+          {/* User Info and Time */}
+          <div className="flex items-center space-x-4">
+            <div className="hidden md:block text-right">
+              <p className="text-sm font-medium text-gray-700">
+                {userProfile?.full_name || 'Guest'}
+              </p>
+              <p className="text-xs text-gray-500">
+                {formatDate(currentTime)} {formatTime(currentTime)}
+              </p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button variant="ghost" size="icon">
                 <Settings className="h-5 w-5" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-red-500 hover:text-red-700 hover:bg-red-100"
-                onClick={handleSignOut}
+                onClick={signOut}
               >
                 <LogOut className="h-5 w-5" />
               </Button>
@@ -115,7 +90,8 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
       </header>
 
       {/* Main Content Area */}
-      <div className="flex flex-col lg:flex-row max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 gap-6">
+      {/* ได้ทำการแก้ไขตรงนี้: เปลี่ยน max-w-7xl เป็น w-full เพื่อขยายให้เต็มพื้นที่ */}
+      <div className="flex flex-col lg:flex-row w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 gap-6">
         {/* Sidebar Navigation */}
         <nav className="w-full lg:w-64 flex-shrink-0">
           <Card className="p-4 flex flex-col space-y-2">
@@ -138,11 +114,9 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange }) => 
           </Card>
         </nav>
 
-        {/* Page Content */}
-        <main className="flex-1 min-w-0">
-          <Card className="p-6 h-full">
-            {children}
-          </Card>
+        {/* Dynamic Content */}
+        <main className="flex-1 w-full"> {/* flex-1 จะทำให้ main ขยายเต็มพื้นที่ที่เหลือ */}
+          {children}
         </main>
       </div>
     </div>
