@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import CustomerEditModal from './CustomerEditModal'; // ตรวจสอบว่า path ถูกต้อง
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useCallback } from 'react';
 
 // อินเทอร์เฟซสำหรับข้อมูลภูมิศาสตร์
 interface Province {
@@ -47,7 +48,7 @@ interface Customer {
   income?: number;
   references?: string;
   notes?: string;
-  imageUrl?: string; // เพิ่มฟิลด์ imageUrl
+  primaryImageUrl?: string | null;
 }
 
 const CustomerManagement: React.FC = () => {
@@ -60,9 +61,10 @@ const CustomerManagement: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [newCustomer, setNewCustomer] = useState<Omit<Customer, 'id'>>({
-    customer_type: 'cash',
+    customer_type: 'regular',
     name: '',
     phone: '',
+    citizen_id: null,
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
@@ -94,18 +96,96 @@ const CustomerManagement: React.FC = () => {
     }
   }, [selectedDistrict]);
 
-  const loadCustomers = async () => {
-    const { data, error } = await supabase
-      .from('customers')
-      .select('*')
-      .order('name');
+   const loadCustomers = useCallback(async () => {
+    try {
+      // 1. สร้าง Query ด้วยการทำ LEFT JOIN ไปยัง customer_gallery
+      let query = supabase.from('customers').select(
+        `
+        *,
+        customer_gallery!left( 
+          photo_path,          
+          is_primary           
     
-    if (error) {
+        )
+        `
+      );
+
+      // 2. เพิ่มเงื่อนไขการกรอง (จากโค้ดที่คุณมี)
+      // ตัวอย่าง: ถ้าคุณมีการกรองข้อมูลตาม searchTerm, filterType, selectedProvince, selectedDistrict
+      if (searchTerm) {
+        query = query.or(`name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`);
+      }
+      if (filterType && filterType !== 'all') {
+        query = query.eq('customer_type', filterType);
+      }
+      if (selectedProvince) {
+        query = query.eq('province_id', selectedProvince);
+      }
+      if (selectedDistrict) {
+        query = query.eq('district_id', selectedDistrict);
+      }
+
+      // 3. เรียงลำดับข้อมูล
+      query = query.order('name'); // เรียงตามชื่อลูกค้า
+
+      // 4. ดำเนินการ Query
+      const { data, error } = await query;
+
+      if (error) {
+        throw error; // ส่ง error ไปยัง catch block
+      }
+
+      // 5. ประมวลผลข้อมูลที่ได้มาเพื่อค้นหารูปภาพหลักและสร้าง URL
+      const customersWithImages = data.map((customer: any) => { // ใช้ 'any' ชั่วคราว หรือสร้าง Type ที่เหมาะสมกับการ Join นี้
+        let primaryImageUrl: string | null = null;
+        let primaryPhotoPath: string | null = null;
+
+        // ตรวจสอบว่ามีข้อมูล customer_gallery ที่ถูก Join มาหรือไม่
+        if (customer.customer_gallery && customer.customer_gallery.length > 0) {
+          // ค้นหารูปภาพที่ถูกตั้งค่าเป็น is_primary (ถ้ามี)
+          const primaryPhoto = customer.customer_gallery.find(
+            (photo: { is_primary: boolean; photo_path: string }) => photo.is_primary
+          );
+
+          if (primaryPhoto) {
+            primaryPhotoPath = primaryPhoto.photo_path;
+          } else {
+            // ถ้าไม่มีรูปภาพไหนถูกตั้งเป็น is_primary ให้ใช้รูปภาพแรกที่ถูก Join มา
+            primaryPhotoPath = customer.customer_gallery[0].photo_path;
+          }
+        }
+
+        // สร้าง Public URL จาก photo_path ที่ได้มา
+        if (primaryPhotoPath) {
+          const { data: publicUrlData } = supabase.storage
+            .from('customer-gallery') // *** สำคัญ: ต้องตรงกับชื่อ Bucket ของคุณ ***
+            .getPublicUrl(primaryPhotoPath);
+          primaryImageUrl = publicUrlData?.publicUrl || null;
+        }
+
+        // สร้าง Object ลูกค้าใหม่ โดยเพิ่ม primaryImageUrl เข้าไป
+        // และลบ customer_gallery ที่ไม่จำเป็นต้องเก็บใน state ออกไป
+        const { customer_gallery, ...restCustomerData } = customer;
+        return {
+          ...restCustomerData,
+          primaryImageUrl // เพิ่ม URL รูปภาพหลักเข้าไปใน Object ลูกค้า
+        } as Customer; // Cast กลับเป็น Customer Type (ตรวจสอบว่า Customer Type ได้รับการอัปเดตแล้ว)
+      });
+
+      setCustomers(customersWithImages); // ตั้งค่า state customers ด้วยข้อมูลใหม่ที่มี URL รูปภาพหลัก
+
+    } catch (error: any) {
+      console.error("Error loading customers:", error.message);
       toast({ title: "ข้อผิดพลาด", description: "ไม่สามารถโหลดข้อมูลลูกค้าได้", variant: "destructive" });
-      return;
     }
-    setCustomers(data || []);
-  };
+  }, [
+    searchTerm,
+    filterType,
+    selectedProvince,
+    selectedDistrict,
+    toast, 
+    
+  ]);
 
   const loadProvinces = async () => {
     const { data, error } = await supabase
@@ -149,63 +229,133 @@ const CustomerManagement: React.FC = () => {
   };
 
   const addCustomer = async () => {
-    if (!newCustomer.name || !newCustomer.phone || !newCustomer.customer_type) {
-      toast({ title: "ข้อผิดพลาด", description: "กรุณากรอกข้อมูลที่จำเป็น: ชื่อ, เบอร์โทรศัพท์, และประเภทลูกค้า", variant: "destructive" });
-      return;
+  // 1. ตรวจสอบข้อมูลที่จำเป็นทั้งหมด รวมถึง citizen_id
+  if (
+    !newCustomer.name ||
+    !newCustomer.phone ||
+    !newCustomer.customer_type ||
+    !newCustomer.citizen_id // เพิ่มการตรวจสอบ citizen_id ที่นี่
+  ) {
+    toast({
+      title: "ข้อผิดพลาด",
+      description: "กรุณากรอกข้อมูลที่จำเป็น: ชื่อ, เลขบัตรประชาชน, เบอร์โทรศัพท์, และประเภทลูกค้า",
+      variant: "destructive"
+    });
+    return;
+  }
+
+
+  if (newCustomer.citizen_id.length !== 13) {
+    toast({
+      title: "ข้อผิดพลาด",
+      description: "เลขบัตรประชาชนต้องมี 13 หลัก",
+      variant: "destructive"
+    });
+    return;
+  }
+  if (!/^\d+$/.test(newCustomer.citizen_id)) {
+    toast({
+      title: "ข้อผิดพลาด",
+      description: "เลขบัตรประชาชนต้องเป็นตัวเลขเท่านั้น",
+      variant: "destructive"
+    });
+    return;
+  }
+
+  let newCustomerId: string | null = null;
+
+  try {
+    
+    const { data: customerData, error: customerError } = await supabase
+      .from('customers')
+      .insert({
+        ...newCustomer,
+        province_id: selectedProvince || null,
+        district_id: selectedDistrict || null
+      })
+      .select('id')
+      .single(); 
+
+    if (customerError) {
+      // ตรวจสอบ Unique Constraint Violation สำหรับ citizen_id (ถ้าคุณตั้ง Unique ไว้ใน DB)
+      if (customerError.code === '23505' && customerError.message.includes('citizen_id')) {
+        throw new Error("เลขบัตรประชาชนนี้มีอยู่ในระบบแล้ว กรุณาตรวจสอบอีกครั้ง");
+      }
+      throw new Error(`ไม่สามารถเพิ่มข้อมูลลูกค้าได้: ${customerError.message}`);
     }
 
-    try {
-      let imageUrl: string | null = null;
+    newCustomerId = customerData.id;
 
-      if (newCustomerImage) {
-        const fileExtension = newCustomerImage.name.split('.').pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExtension}`;
-        const filePath = `customer-images/${fileName}`; // Path ภายใน bucket
 
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('cuspic') // ชื่อ bucket: cuspic
-          .upload(filePath, newCustomerImage, {
-            cacheControl: '3600',
-            upsert: false, // ไม่อนุญาตให้อัปโหลดทับ
-          });
+    if (newCustomerImage && newCustomerId) { 
+      const fileExtension = newCustomerImage.name.split('.').pop();
+      
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExtension}`;
+      const filePathInStorage = `customer-images/${newCustomerId}/${fileName}`; // PATH ภายใน bucket
 
-        if (uploadError) {
-          throw new Error(`ไม่สามารถอัปโหลดรูปภาพได้: ${uploadError.message}`);
-        }
-
-        const { data: publicUrlData } = supabase.storage
-          .from('cuspic')
-          .getPublicUrl(filePath);
-        
-        imageUrl = publicUrlData?.publicUrl || null;
-      }
-
-      const { error } = await supabase
-        .from('customers')
-        .insert({
-          ...newCustomer,
-          province_id: selectedProvince || null,
-          district_id: selectedDistrict || null,
-          imageUrl: imageUrl, // บันทึก URL รูปภาพ
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('customer-gallery') 
+        .upload(filePathInStorage, newCustomerImage, {
+          cacheControl: '3600',
+          upsert: false, 
         });
 
-      if (error) throw error;
+      if (uploadError) {
+        
+        await supabase.from('customers').delete().eq('id', newCustomerId); 
+        throw new Error(`ไม่สามารถอัปโหลดรูปภาพได้: ${uploadError.message}`);
+      }
 
-      toast({ title: "สำเร็จ", description: "เพิ่มลูกค้าเรียบร้อย" });
-      setIsAddModalOpen(false);
-      setNewCustomer({ customer_type: 'cash', name: '', phone: '' });
-      setSelectedProvince('');
-      setSelectedDistrict('');
-      setNewCustomerImage(null); // รีเซ็ตไฟล์รูปภาพ
-      loadCustomers();
-    } catch (error: any) {
-      toast({ 
-        title: "ข้อผิดพลาด", 
-        description: error.message || "ไม่สามารถเพิ่มลูกค้าได้", 
-        variant: "destructive" 
-      });
+      
+      // ถ้า bucket เป็น public, publicUrl จะเป็นแบบนี้:
+      const { data: publicUrlData } = supabase.storage
+        .from('customer-gallery')
+        .getPublicUrl(filePathInStorage);
+      const publicImageUrl = publicUrlData?.publicUrl || null; // URL เต็มสำหรับแสดงผล (ถ้าเป็น public bucket)
+
+      // 3. บันทึกข้อมูลรูปภาพลงใน Table 'customer_gallery'
+      const { error: photoInsertError } = await supabase
+        .from('customer_gallery') // ชื่อ table ของคุณ
+        .insert({
+          customer_id: newCustomerId, // ใช้ ID ของลูกค้าที่เพิ่งสร้าง
+          photo_path: filePathInStorage, // บันทึก Path ของไฟล์ใน Storage
+          is_primary: true, // อาจตั้งเป็น true ถ้าเป็นรูปแรก/รูปหลัก
+          caption: `รูปโปรไฟล์ของ ${newCustomer.name}`, // คำอธิบายรูปภาพ
+        });
+
+      if (photoInsertError) {
+        // หากบันทึกข้อมูลรูปภาพลง DB ล้มเหลว ควรลบไฟล์ที่อัปโหลดไปแล้วใน Storage
+        await supabase.storage.from('customer_gallery').remove([filePathInStorage]);
+        await supabase.from('customers').delete().eq('id', newCustomerId); // ลบข้อมูลลูกค้า
+        throw new Error(`ไม่สามารถบันทึกข้อมูลรูปภาพได้: ${photoInsertError.message}`);
+      }
     }
-  };
+
+    // 4. แสดงผลสำเร็จและรีเซ็ตค่า
+    toast({ title: "สำเร็จ", description: "เพิ่มลูกค้าเรียบร้อย" });
+    setIsAddModalOpen(false);
+    setNewCustomer({
+      customer_type: 'cash', 
+      name: '',
+      phone: '',
+      province_id: null,
+      district_id: null,
+      citizen_id: null, 
+    });
+    setSelectedProvince('');
+    setSelectedDistrict('');
+    setNewCustomerImage(null); 
+    loadCustomers(); // โหลดข้อมูลลูกค้าใหม่
+
+  } catch (error: any) {
+    console.error("Error in addCustomer:", error); // เพิ่ม console.error เพื่อดู error เต็มๆ
+    toast({
+      title: "ข้อผิดพลาด",
+      description: error.message || "ไม่สามารถเพิ่มลูกค้าได้",
+      variant: "destructive"
+    });
+  }
+};
 
   const handleEditCustomer = (customer: Customer) => {
     setEditingCustomer(customer);
@@ -282,6 +432,17 @@ const CustomerManagement: React.FC = () => {
                   placeholder="อีเมล"
                 />
               </div>
+
+            <div>
+                <Label htmlFor="name">รหัสบัตรประชาชน *</Label>
+                <Input
+                  id="citizen_id"
+                  value={newCustomer.citizen_id}
+                  onChange={(e) => setNewCustomer(prev => ({ ...prev, citizen_id: e.target.value }))}
+                  placeholder="บัตรประชาชน"
+                />
+              </div>
+
               <div>
                 <Label htmlFor="image">รูปภาพลูกค้า (ไม่บังคับ)</Label>
                 <Input
@@ -470,21 +631,21 @@ const CustomerManagement: React.FC = () => {
         <CardContent>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
             {filteredCustomers.map((customer) => (
-              <div key={customer.id} className="border rounded-lg p-4 flex items-start space-x-4">
-                 {customer.imageUrl && (
-                    <a 
-                      href={customer.imageUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="flex-shrink-0"
-                    >
-                      <img 
-                        src={customer.imageUrl} 
-                        alt={customer.name} 
-                        className="w-20 h-20 object-cover rounded-md" 
-                      />
-                    </a>
-                  )}
+  <div key={customer.id} className="border rounded-lg p-4 flex items-start space-x-4">
+    {customer.primaryImageUrl && (
+      <a
+        href={customer.primaryImageUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex-shrink-0"
+      >
+        <img
+          src={customer.primaryImageUrl}
+          alt={customer.name}
+          className="w-20 h-20 object-cover rounded-md"
+        />
+      </a>
+    )}
                 <div className="flex-1 flex justify-between">
                   <div>
                     <h3 className="font-medium">{customer.name}</h3>
